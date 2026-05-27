@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Валютный Дашборд</title>
     
-		<link rel="apple-touch-icon" href="icons8-currency-100.png">
-
-		<link rel="icon" type="image/png" sizes="192x192" href="icons8-currency-100.png">
+    <link rel="apple-touch-icon" href="icons8-currency-100.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons8-currency-100.png">
     
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -16,51 +15,51 @@
 
     <div class="container mx-auto px-4 pb-8 max-w-4xl">
         
-		<header class="sticky top-0 bg-slate-900 z-40 flex flex-col md:flex-row justify-between items-center pt-8 pb-6 mb-8 border-b border-slate-800 gap-6 shadow-md shadow-slate-900/50">
-			<div>
+        <header class="sticky top-0 bg-slate-900 z-40 flex flex-col md:flex-row justify-between items-center pt-8 pb-6 mb-8 border-b border-slate-800 gap-6 shadow-md shadow-slate-900/50">
+            <div>
                 <div class="flex gap-2 mb-2 justify-center md:justify-start text-xs">
                     <button id="langRu" class="cursor-pointer transition font-bold text-emerald-400">RU</button>
                     <span class="text-slate-600">|</span>
                     <button id="langEn" class="cursor-pointer transition font-bold text-slate-500 hover:text-slate-300">EN</button>
                 </div>
-				<h1 class="text-3xl font-bold text-white flex items-center gap-2 whitespace-nowrap">
-					<i data-lucide="trending-up" class="text-emerald-400"></i>
-					<span data-i18n="title">Валютный Дашборд</span>
-				</h1>
-				<p data-i18n="subtitle" class="text-slate-400 text-sm mt-1">Курсы валют и конвертер в реальном времени</p>
-			</div>
-			
-			<div class="flex flex-col gap-3 w-full md:w-auto items-center md:items-end">
-				
-				<div class="flex gap-2 justify-center md:justify-end w-full sm:w-auto">
-					<button id="resetBtn" class="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-medium transition cursor-pointer text-sm">
-						<i data-lucide="rotate-ccw" class="w-4 h-4"></i>
-						<span data-i18n="btnReset">Сброс</span>
-					</button>
-					<button id="refreshBtn" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded font-medium transition cursor-pointer">
-						<i data-lucide="refresh-cw" class="w-4 h-4" id="refreshIcon"></i>
-						<span data-i18n="btnRefresh">Обновить</span>
-					</button>
-				</div>
+                <h1 class="text-3xl font-bold text-white flex items-center gap-2 whitespace-nowrap">
+                    <i data-lucide="trending-up" class="text-emerald-400"></i>
+                    <span data-i18n="title">Валютный Дашборд</span>
+                </h1>
+                <p data-i18n="subtitle" class="text-slate-400 text-sm mt-1">Курсы валют и конвертер в реальном времени</p>
+            </div>
+            
+            <div class="flex flex-col gap-3 w-full md:w-auto items-center md:items-end">
+                
+                <div class="flex gap-2 justify-center md:justify-end w-full sm:w-auto">
+                    <button id="resetBtn" class="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-medium transition cursor-pointer text-sm">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                        <span data-i18n="btnReset">Сброс</span>
+                    </button>
+                    <button id="refreshBtn" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded font-medium transition cursor-pointer">
+                        <i data-lucide="refresh-cw" class="w-4 h-4" id="refreshIcon"></i>
+                        <span data-i18n="btnRefresh">Обновить</span>
+                    </button>
+                </div>
 
-				<div class="flex flex-row items-center justify-center gap-4 w-full md:w-full">
-					<div class="flex items-center gap-2">
-						<label for="amountInput" class="text-sm text-slate-400 whitespace-nowrap" data-i18n="labelAmount">Сумма:</label>
-						<input type="number" id="amountInput" value="1" min="0" step="any" 
-							class="w-28 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500 transition text-right"
-							placeholder="1">
-					</div>
+                <div class="flex flex-row items-center justify-center gap-4 w-full md:w-full">
+                    <div class="flex items-center gap-2">
+                        <label for="amountInput" class="text-sm text-slate-400 whitespace-nowrap" data-i18n="labelAmount">Сумма:</label>
+                        <input type="number" id="amountInput" value="1" min="0" step="any" 
+                            class="w-28 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500 transition text-right"
+                            placeholder="1">
+                    </div>
 
-					<div class="flex items-center gap-2">
-						<label for="baseCurrency" class="text-sm text-slate-400 whitespace-nowrap" data-i18n="labelBase">База:</label>
-						<select id="baseCurrency" class="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-white focus:outline-none focus:border-emerald-500 transition cursor-pointer">
-						</select>
-					</div>
-				</div>
-				
-			</div>
-		</header>
-		
+                    <div class="flex items-center gap-2">
+                        <label for="baseCurrency" class="text-sm text-slate-400 whitespace-nowrap" data-i18n="labelBase">База:</label>
+                        <select id="baseCurrency" class="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-white focus:outline-none focus:border-emerald-500 transition cursor-pointer">
+                        </select>
+                    </div>
+                </div>
+                
+            </div>
+        </header>
+        
         <div id="loading" class="text-center py-12">
             <div class="animate-spin inline-block w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mb-4"></div>
             <p id="loadingText" class="text-slate-400">Получение свежих данных от API...</p>
@@ -150,7 +149,6 @@
         let lastServerTime = null; 
         let draggedCurrencyCode = null; 
         
-        // ИСПРАВЛЕНО: Будем хранить предыдущую выбранную базовую валюту, чтобы знать кого возвращать на панель
         let previousBaseCurrency = localStorage.getItem('user_base_currency') || 'RUB';
 
         const baseCurrencySelect = document.getElementById('baseCurrency');
@@ -220,7 +218,6 @@
                 if (code === previousSelection) option.selected = true;
                 baseCurrencySelect.appendChild(option);
             });
-            // Синхронизируем глобальную переменную
             previousBaseCurrency = previousSelection;
             localStorage.setItem('user_base_currency', previousSelection);
         }
@@ -231,8 +228,6 @@
 
             if (newBase === oldBase) return;
 
-            // ИСПРАВЛЕНО: Меняем старую базу и новую базу местами прямо внутри массива userCurrencies,
-            // чтобы новая базовая скрылась, а старая встала ровно на её место на дашборде.
             const newBaseIndex = userCurrencies.indexOf(newBase);
             const oldBaseIndex = userCurrencies.indexOf(oldBase);
 
@@ -240,15 +235,12 @@
                 userCurrencies[newBaseIndex] = oldBase;
                 userCurrencies[oldBaseIndex] = newBase;
             } else if (newBaseIndex !== -1 && oldBaseIndex === -1) {
-                // Страховочный случай: если старой базы почему-то нет в списке
                 userCurrencies[newBaseIndex] = oldBase;
             }
 
             previousBaseCurrency = newBase;
             localStorage.setItem('user_base_currency', newBase);
             saveToLocalStorage();
-            
-            // Перезапрашиваем данные для новой базовой валюты
             await fetchExchangeRates();
         }
 
@@ -292,7 +284,9 @@
                 const currencySymbol = getCurrencySymbol(currency);
 
                 const card = document.createElement('div');
-                card.className = "bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 transition duration-200 shadow-lg flex flex-col justify-between relative cursor-grab active:cursor-grabbing transition-all duration-150 select-none";
+                // Добавили touch-action: none, чтобы браузер не скроллил страницу, когда мы тянем карточку пальцем
+                card.className = "bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 transition duration-200 shadow-lg flex flex-col justify-between relative cursor-grab active:cursor-grabbing select-none touch-action-none";
+                card.style.touchAction = "none";
                 card.setAttribute('draggable', 'true');
                 card.setAttribute('data-currency', currency);
 
@@ -300,7 +294,7 @@
                     <div>
                         <div class="flex justify-between items-start mb-2">
                             <div class="flex items-center gap-1.5">
-                                <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-500 cursor-grab"></i>
+                                <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-500 cursor-grab drag-handle"></i>
                                 <span class="text-xs font-bold tracking-wider uppercase text-slate-400 bg-slate-700/50 px-2 py-1 rounded">
                                     ${i18n[currentLang].cardTotal} ${currency} ${currencySymbol ? `(${currencySymbol})` : ''}
                                 </span>
@@ -356,6 +350,7 @@
         }
 
         function setupDragAndDropEvents(card) {
+            // --- МЫШЬ (Обычный HTML5 Drag and Drop) ---
             card.addEventListener('dragstart', () => {
                 draggedCurrencyCode = card.getAttribute('data-currency');
                 card.classList.add('opacity-40', 'scale-95', 'border-emerald-500');
@@ -388,6 +383,80 @@
                     saveToLocalStorage();
                     updateDashboard();
                 }
+            });
+
+            // --- СМАРТФОНЫ (Touch Events Polyfill) ---
+            let startX = 0, startY = 0;
+            
+            card.addEventListener('touchstart', (e) => {
+                // Тянуть можно как за всю карточку, так и за иконку. Исключаем кнопки удаления.
+                if (e.target.closest('button')) return;
+
+                const touch = e.touches[0];
+                startX = touch.clientX;
+                startY = touch.clientY;
+                draggedCurrencyCode = card.getAttribute('data-currency');
+                
+                card.classList.add('z-50', 'border-emerald-500');
+                card.style.transition = 'none';
+            }, { passive: true });
+
+            card.addEventListener('touchmove', (e) => {
+                if (!draggedCurrencyCode) return;
+                const touch = e.touches[0];
+                
+                // Визуально сдвигаем карточку вслед за пальцем
+                const deltaX = touch.clientX - startX;
+                const deltaY = touch.clientY - startY;
+                card.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(0.98)`;
+
+                // Находим элемент, над которым сейчас находится палец
+                const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+                if (!elementUnderTouch) return;
+
+                const targetCard = elementUnderTouch.closest('[data-currency]');
+                
+                // Подсвечиваем потенциальную цель для рокировки
+                document.querySelectorAll('[data-currency]').forEach(el => {
+                    if (el !== card) el.classList.remove('border-emerald-500', 'scale-95');
+                });
+                
+                if (targetCard && targetCard !== card) {
+                    targetCard.classList.add('border-emerald-500', 'scale-95');
+                }
+            }, { passive: false });
+
+            card.addEventListener('touchend', (e) => {
+                if (!draggedCurrencyCode) return;
+
+                card.classList.remove('z-50', 'border-emerald-500');
+                card.style.transform = '';
+                card.style.transition = '';
+
+                const touch = e.changedTouches[0];
+                const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+                
+                document.querySelectorAll('[data-currency]').forEach(el => el.classList.remove('border-emerald-500', 'scale-95'));
+
+                if (elementUnderTouch) {
+                    const targetCard = elementUnderTouch.closest('[data-currency]');
+                    if (targetCard) {
+                        const targetCurrency = targetCard.getAttribute('data-currency');
+                        if (targetCurrency && targetCurrency !== draggedCurrencyCode) {
+                            const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
+                            const targetIndex = userCurrencies.indexOf(targetCurrency);
+
+                            if (draggedIndex !== -1 && targetIndex !== -1) {
+                                userCurrencies.splice(draggedIndex, 1);
+                                userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
+                                saveToLocalStorage();
+                            }
+                        }
+                    }
+                }
+                
+                draggedCurrencyCode = null;
+                updateDashboard();
             });
         }
 
@@ -468,7 +537,6 @@
             }
         }
 
-        document.getElementById('error');
         function showError(message) { errorEl.classList.remove('hidden'); document.getElementById('errorText').textContent = message; dashboardEl.classList.add('hidden'); }
         function hideError() { errorEl.classList.add('hidden'); }
 
@@ -485,9 +553,7 @@
             applyLocalization(); updateCurrentTime(); updateTimestamp(); updateBaseSelectOptions(); updateDashboard();
         }
 
-        // ИСПРАВЛЕНО: Навесили умный обработчик рокировки на селектор базовой валюты
         baseCurrencySelect.addEventListener('change', handleBaseCurrencyChange);
-        
         refreshBtn.addEventListener('click', fetchExchangeRates);
         amountInput.addEventListener('input', updateDashboard);
         langRuBtn.addEventListener('click', () => changeLanguage('ru'));
@@ -505,7 +571,6 @@
 
         document.addEventListener('DOMContentLoaded', () => { 
             applyLocalization(); 
-            // Инициализируем селектор сохраненной базовой валютой
             updateBaseSelectOptions(previousBaseCurrency);
             lucide.createIcons(); 
             updateCurrentTime(); 
