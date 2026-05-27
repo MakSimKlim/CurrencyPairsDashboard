@@ -284,9 +284,7 @@
                 const currencySymbol = getCurrencySymbol(currency);
 
                 const card = document.createElement('div');
-                // Добавили touch-action: none, чтобы браузер не скроллил страницу, когда мы тянем карточку пальцем
-                card.className = "bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 transition duration-200 shadow-lg flex flex-col justify-between relative cursor-grab active:cursor-grabbing select-none touch-action-none";
-                card.style.touchAction = "none";
+                card.className = "bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 transition duration-200 shadow-lg flex flex-col justify-between relative select-none";
                 card.setAttribute('draggable', 'true');
                 card.setAttribute('data-currency', currency);
 
@@ -294,7 +292,7 @@
                     <div>
                         <div class="flex justify-between items-start mb-2">
                             <div class="flex items-center gap-1.5">
-                                <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-500 cursor-grab drag-handle"></i>
+                                <i data-lucide="grip-vertical" class="w-5 h-5 text-slate-500 cursor-grab drag-handle p-0.5 active:text-emerald-400" style="touch-action: none;"></i>
                                 <span class="text-xs font-bold tracking-wider uppercase text-slate-400 bg-slate-700/50 px-2 py-1 rounded">
                                     ${i18n[currentLang].cardTotal} ${currency} ${currencySymbol ? `(${currencySymbol})` : ''}
                                 </span>
@@ -385,38 +383,41 @@
                 }
             });
 
-            // --- СМАРТФОНЫ (Touch Events Polyfill) ---
+            // --- СМАРТФОНЫ (Touch Events через Ручку-Грип) ---
+            const handle = card.querySelector('.drag-handle');
             let startX = 0, startY = 0;
+            let isTouchDragging = false;
             
-            card.addEventListener('touchstart', (e) => {
-                // Тянуть можно как за всю карточку, так и за иконку. Исключаем кнопки удаления.
-                if (e.target.closest('button')) return;
-
+            handle.addEventListener('touchstart', (e) => {
                 const touch = e.touches[0];
                 startX = touch.clientX;
                 startY = touch.clientY;
                 draggedCurrencyCode = card.getAttribute('data-currency');
+                isTouchDragging = true;
                 
-                card.classList.add('z-50', 'border-emerald-500');
+                card.classList.add('z-50', 'border-emerald-500', 'shadow-2xl');
                 card.style.transition = 'none';
             }, { passive: true });
 
-            card.addEventListener('touchmove', (e) => {
-                if (!draggedCurrencyCode) return;
-                const touch = e.touches[0];
+            handle.addEventListener('touchmove', (e) => {
+                if (!isTouchDragging || !draggedCurrencyCode) return;
                 
-                // Визуально сдвигаем карточку вслед за пальцем
+                // Предотвращаем нативный скролл, ТОЛЬКО когда тянут за ручку
+                if (e.cancelable) e.preventDefault(); 
+                
+                const touch = e.touches[0];
                 const deltaX = touch.clientX - startX;
                 const deltaY = touch.clientY - startY;
-                card.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(0.98)`;
+                
+                // Двигаем карточку
+                card.style.transform = `translate(${deltaX}px, ${deltaY}px) scale(1.02)`;
 
-                // Находим элемент, над которым сейчас находится палец
+                // Находим цель под пальцем
                 const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
                 if (!elementUnderTouch) return;
 
                 const targetCard = elementUnderTouch.closest('[data-currency]');
                 
-                // Подсвечиваем потенциальную цель для рокировки
                 document.querySelectorAll('[data-currency]').forEach(el => {
                     if (el !== card) el.classList.remove('border-emerald-500', 'scale-95');
                 });
@@ -426,10 +427,11 @@
                 }
             }, { passive: false });
 
-            card.addEventListener('touchend', (e) => {
-                if (!draggedCurrencyCode) return;
+            handle.addEventListener('touchend', (e) => {
+                if (!isTouchDragging) return;
+                isTouchDragging = false;
 
-                card.classList.remove('z-50', 'border-emerald-500');
+                card.classList.remove('z-50', 'border-emerald-500', 'shadow-2xl');
                 card.style.transform = '';
                 card.style.transition = '';
 
