@@ -10,8 +10,23 @@
     
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <style>
+        /* Оптимизация для плавного рендеринга на ПК и мобильных */
+        .currency-card {
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+            backface-visibility: hidden;
+            transform: translateZ(0);
+        }
+        /* Стили при перетаскивании на ПК */
+        .currency-card.dragging {
+            opacity: 0.4;
+            transform: scale(0.95);
+            border-color: #10b981;
+        }
+    </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased selection:bg-emerald-500/30">
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans antialiased">
 
     <div class="container mx-auto px-4 pb-8 max-w-4xl">
         
@@ -30,7 +45,6 @@
             </div>
             
             <div class="flex flex-col gap-3 w-full md:w-auto items-center md:items-end">
-                
                 <div class="flex gap-2 justify-center md:justify-end w-full sm:w-auto">
                     <button id="resetBtn" class="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-medium transition cursor-pointer text-sm">
                         <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
@@ -56,7 +70,6 @@
                         </select>
                     </div>
                 </div>
-                
             </div>
         </header>
         
@@ -70,8 +83,7 @@
             <span id="errorText">Не удалось загрузить данные. Попробуйте позже.</span>
         </div>
 
-        <main id="dashboard" class="hidden grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 auto-rows-max" style="contain: layout;">
-        </main>
+        <main id="dashboard" class="hidden grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4"></main>
         
         <footer class="mt-8 text-center text-xs text-slate-500 space-y-1">
             <p id="currentTime">Текущие дата и время: --.--.----, --:--:-- UTC</p>
@@ -284,8 +296,7 @@
                 const currencySymbol = getCurrencySymbol(currency);
 
                 const card = document.createElement('div');
-                // Оптимизация рендеринга слоев: will-change препятствует дёрганью интерфейса
-                card.className = "bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 transition duration-200 shadow-lg flex flex-col justify-between relative select-none will-change-transform";
+                card.className = "currency-card bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 transition-colors duration-150 flex flex-col justify-between relative select-none";
                 card.setAttribute('draggable', 'true');
                 card.setAttribute('data-currency', currency);
 
@@ -320,7 +331,7 @@
                     </div>
                 `;
 
-                setupDragAndDropEvents(card);
+                setupDragAndDrop(card);
                 dashboardEl.appendChild(card);
             });
 
@@ -350,28 +361,35 @@
             lucide.createIcons();
         }
 
-        function setupDragAndDropEvents(card) {
-            // --- МЫШЬ (Обычный HTML5 Drag and Drop) ---
-            card.addEventListener('dragstart', () => {
+        function setupDragAndDrop(card) {
+            // --- 1. НАВТИВНЫЙ HTML5 DRAG & DROP ДЛЯ ПК (Идеально плавный скролл мыши) ---
+            card.addEventListener('dragstart', (e) => {
                 draggedCurrencyCode = card.getAttribute('data-currency');
-                card.classList.add('opacity-40', 'scale-95', 'border-emerald-500');
+                card.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', draggedCurrencyCode);
             });
 
             card.addEventListener('dragend', () => {
-                card.classList.remove('opacity-40', 'scale-95', 'border-emerald-500');
-                document.querySelectorAll('[data-currency]').forEach(el => el.classList.remove('border-emerald-500', 'translate-y-1'));
+                card.classList.remove('dragging');
+                document.querySelectorAll('.currency-card').forEach(el => el.classList.remove('border-emerald-500'));
             });
 
             card.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 const targetCurrency = card.getAttribute('data-currency');
-                if (targetCurrency !== draggedCurrencyCode) card.classList.add('border-emerald-500', 'translate-y-1');
+                if (targetCurrency !== draggedCurrencyCode) {
+                    card.classList.add('border-emerald-500');
+                }
             });
 
-            card.addEventListener('dragleave', () => card.classList.remove('border-emerald-500', 'translate-y-1'));
+            card.addEventListener('dragleave', () => {
+                card.classList.remove('border-emerald-500');
+            });
 
             card.addEventListener('drop', (e) => {
                 e.preventDefault();
+                card.classList.remove('border-emerald-500');
                 const targetCurrency = card.getAttribute('data-currency');
                 if (!draggedCurrencyCode || draggedCurrencyCode === targetCurrency) return;
 
@@ -386,116 +404,77 @@
                 }
             });
 
-            // --- СМАРТФОНЫ (Идеально плавные Touch Events с изоляцией скролла) ---
+            // --- 2. ЧИСТЫЙ МОБИЛЬНЫЙ ПОЛИФИЛ (Только на ручке захвата) ---
             const handle = card.querySelector('.drag-handle');
-            let startX = 0, startY = 0;
-            let initialClientX = 0, initialClientY = 0;
-            let isTouchDragging = false;
-            let currentTargetCard = null;
-
+            
             handle.addEventListener('touchstart', (e) => {
                 const touch = e.touches[0];
-                
-                // Фиксируем начальные глобальные координаты тача
-                initialClientX = touch.clientX;
-                initialClientY = touch.clientY;
-                
-                // Фиксируем текущее физическое положение карточки на экране перед переносом в fixed
-                const rect = card.getBoundingClientRect();
-                startX = rect.left;
-                startY = rect.top;
-
                 draggedCurrencyCode = card.getAttribute('data-currency');
-                isTouchDragging = true;
-
-                // Задаем явные размеры fixed-элемента, чтобы он не схлопнулся
-                card.style.width = `${rect.width}px`;
-                card.style.height = `${rect.height}px`;
-                card.style.position = 'fixed';
-                card.style.left = `${startX}px`;
-                card.style.top = `${startY}px`;
-                card.style.transition = 'none';
                 
-                card.classList.add('z-50', 'border-emerald-500', 'shadow-2xl');
-            }, { passive: false });
+                // Эмулируем событие начала перетаскивания для нативной структуры
+                card.classList.add('dragging');
+                
+                // Запоминаем стартовые точки для корректного отслеживания перемещения пальца
+                handle.dataset.touchStartX = touch.clientX;
+                handle.dataset.touchStartY = touch.clientY;
+            }, { passive: true });
 
             handle.addEventListener('touchmove', (e) => {
-                if (!isTouchDragging || !draggedCurrencyCode) return;
-                
-                // Важно: Полная блокировка прыжков нативного скролла в момент ведения элемента!
-                if (e.cancelable) e.preventDefault(); 
+                if (!draggedCurrencyCode) return;
                 
                 const touch = e.touches[0];
                 
-                // Считаем дельту перемещения от стартовой точки тача
-                const deltaX = touch.clientX - initialClientX;
-                const deltaY = touch.clientY - initialClientY;
+                // Блокируем скролл страницы только тогда, когда палец ПЕРЕМЕЩАЕТСЯ по ручке захвата
+                if (e.cancelable) e.preventDefault();
                 
-                // Перемещаем карточку по экрану через левые координаты без искажения масштаба контейнера
-                card.style.left = `${startX + deltaX}px`;
-                card.style.top = `${startY + deltaY}px`;
-
-                // Трюк "прозрачности" слоя для корректного поиска элементов под пальцем
-                card.style.pointerEvents = 'none';
+                // Находим элемент под пальцем в реальном времени
+                card.style.pointerEvents = 'none'; // Временно скрываем верхнюю карточку для луча elementFromPoint
                 const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
                 card.style.pointerEvents = 'auto';
 
                 if (!elementUnderTouch) return;
-                const targetCard = elementUnderTouch.closest('[data-currency]');
-                
+                const targetCard = elementUnderTouch.closest('.currency-card');
+
+                document.querySelectorAll('.currency-card').forEach(el => {
+                    if (el !== card) el.classList.remove('border-emerald-500');
+                });
+
                 if (targetCard && targetCard !== card) {
-                    if (currentTargetCard !== targetCard) {
-                        if (currentTargetCard) currentTargetCard.classList.remove('border-emerald-500', 'scale-95');
-                        currentTargetCard = targetCard;
-                        // Визуальный отклик подсвечиваемой карточки
-                        currentTargetCard.classList.add('border-emerald-500', 'scale-95');
-                    }
-                } else {
-                    if (currentTargetCard) {
-                        currentTargetCard.classList.remove('border-emerald-500', 'scale-95');
-                        currentTargetCard = null;
-                    }
+                    targetCard.classList.add('border-emerald-500');
                 }
-            }, { passive: false });
+            }, { passive: false }); // Важно для предотвращения дефолтного скролла при удержании ручки
 
             handle.addEventListener('touchend', (e) => {
-                if (!isTouchDragging) return;
-                isTouchDragging = false;
+                if (!draggedCurrencyCode) return;
+                card.classList.remove('dragging');
 
-                // Убираем fixed-стили и возвращаем в поток
-                card.style.position = '';
-                card.style.width = '';
-                card.style.height = '';
-                card.style.left = '';
-                card.style.top = '';
-                card.style.transform = '';
-                card.style.transition = '';
-                card.classList.remove('z-50', 'border-emerald-500', 'shadow-2xl');
+                const touch = e.changedTouches[0];
+                
+                card.style.pointerEvents = 'none';
+                const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+                card.style.pointerEvents = 'auto';
 
-                if (currentTargetCard) {
-                    currentTargetCard.classList.remove('border-emerald-500', 'scale-95');
-                    const targetCurrency = currentTargetCard.getAttribute('data-currency');
-                    
-                    if (targetCurrency && targetCurrency !== draggedCurrencyCode) {
-                        const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
-                        const targetIndex = userCurrencies.indexOf(targetCurrency);
+                document.querySelectorAll('.currency-card').forEach(el => el.classList.remove('border-emerald-500'));
 
-                        if (draggedIndex !== -1 && targetIndex !== -1) {
-                            userCurrencies.splice(draggedIndex, 1);
-                            userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
-                            saveToLocalStorage();
+                if (elementUnderTouch) {
+                    const targetCard = elementUnderTouch.closest('.currency-card');
+                    if (targetCard) {
+                        const targetCurrency = targetCard.getAttribute('data-currency');
+                        if (targetCurrency && targetCurrency !== draggedCurrencyCode) {
+                            const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
+                            const targetIndex = userCurrencies.indexOf(targetCurrency);
+
+                            if (draggedIndex !== -1 && targetIndex !== -1) {
+                                userCurrencies.splice(draggedIndex, 1);
+                                userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
+                                saveToLocalStorage();
+                            }
                         }
                     }
-                    currentTargetCard = null;
                 }
                 
                 draggedCurrencyCode = null;
-                
-                // Главный фикс скачков: рендерим дашборд после того, как палец оторван,
-                // давая браузеру 16мс (1 кадр), чтобы завершить жест скролла без дёрганий экрана.
-                setTimeout(() => {
-                    updateDashboard();
-                }, 16);
+                updateDashboard();
             });
         }
 
