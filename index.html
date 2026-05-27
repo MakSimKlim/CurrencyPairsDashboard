@@ -1,4 +1,202 @@
 <!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Валютный Дашборд</title>
+    
+    <link rel="apple-touch-icon" href="icons8-currency-100.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons8-currency-100.png">
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/drag-drop-touch@1.3.0/DragDropTouch.js"></script>
+
+    <style>
+        /* Предотвращаем системное выделение текста и вызов контекстных меню на смартфонах */
+        * {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
+        }
+        
+        /* Разрешаем выделение и ввод в инпутах */
+        input, select {
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        .currency-card {
+            /* pan-y разрешает нативный вертикальный скролл страницы, пока draggable="false" */
+            touch-action: pan-y !important;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+        }
+
+        /* Визуальный стиль для карточки, которую удерживают или тащат */
+        .currency-card.hold-active {
+            background-color: #1e293b !important;
+            box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5);
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+
+    <div class="container mx-auto px-4 pb-8 max-w-4xl">
+        
+        <header class="sticky top-0 bg-slate-900 z-40 flex flex-col md:flex-row justify-between items-center pt-8 pb-6 mb-8 border-b border-slate-800 gap-6 shadow-md shadow-slate-900/50">
+            <div>
+                <div class="flex gap-2 mb-2 justify-center md:justify-start text-xs">
+                    <button id="langRu" class="cursor-pointer transition font-bold text-emerald-400">RU</button>
+                    <span class="text-slate-600">|</span>
+                    <button id="langEn" class="cursor-pointer transition font-bold text-slate-500 hover:text-slate-300">EN</button>
+                </div>
+                <h1 class="text-3xl font-bold text-white flex items-center gap-2 whitespace-nowrap">
+                    <i data-lucide="trending-up" class="text-emerald-400"></i>
+                    <span data-i18n="title">Валютный Дашборд</span>
+                </h1>
+                <p data-i18n="subtitle" class="text-slate-400 text-sm mt-1">Курсы валют и конвертер в реальном времени</p>
+            </div>
+            
+            <div class="flex flex-col gap-3 w-full md:w-auto items-center md:items-end">
+                
+                <div class="flex gap-2 justify-center md:justify-end w-full sm:w-auto">
+                    <button id="resetBtn" class="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-3 py-1.5 rounded font-medium transition cursor-pointer text-sm">
+                        <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                        <span data-i18n="btnReset">Сброс</span>
+                    </button>
+                    <button id="refreshBtn" class="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-1.5 rounded font-medium transition cursor-pointer">
+                        <i data-lucide="refresh-cw" class="w-4 h-4" id="refreshIcon"></i>
+                        <span data-i18n="btnRefresh">Обновить</span>
+                    </button>
+                </div>
+
+                <div class="flex flex-row items-center justify-center gap-4 w-full md:w-full">
+                    <div class="flex items-center gap-2">
+                        <label for="amountInput" class="text-sm text-slate-400 whitespace-nowrap" data-i18n="labelAmount">Сумма:</label>
+                        <input type="number" id="amountInput" value="1" min="0" step="any" 
+                            class="w-28 bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-white font-mono focus:outline-none focus:border-emerald-500 transition text-right"
+                            placeholder="1">
+                    </div>
+
+                    <div class="flex items-center gap-2">
+                        <label for="baseCurrency" class="text-sm text-slate-400 whitespace-nowrap" data-i18n="labelBase">База:</label>
+                        <select id="baseCurrency" class="bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-white focus:outline-none focus:border-emerald-500 transition cursor-pointer">
+                        </select>
+                    </div>
+                </div>
+                
+            </div>
+        </header>
+        
+        <div id="loading" class="text-center py-12">
+            <div class="animate-spin inline-block w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full mb-4"></div>
+            <p id="loadingText" class="text-slate-400">Получение свежих данных от API...</p>
+        </div>
+
+        <div id="error" class="hidden bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-lg mb-6 flex items-center gap-3">
+            <i data-lucide="alert-circle" class="text-red-400"></i>
+            <span id="errorText">Не удалось загрузить данные. Попробуйте позже.</span>
+        </div>
+
+        <main id="dashboard" class="hidden grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        </main>
+        
+        <footer class="mt-8 text-center text-xs text-slate-500 space-y-1">
+            <p id="currentTime">Текущие дата и время: --.--.----, --:--:-- UTC</p>
+            <p id="lastUpdated" class="text-slate-400">Данные обновлены: --:--:-- UTC</p>
+            <p id="footerApi" class="pt-2 text-slate-600">Данные предоставлены ExchangeRate-API</p>
+        </footer>
+    </div>
+
+    <script>
+        const API_URL = 'https://open.er-api.com/v6/latest/';
+        const DEFAULT_CURRENCIES = ['RUB', 'USD', 'EUR', 'KZT', 'BYN', 'CNY', 'GBP', 'JPY', 'TRY'];
+        
+        const i18n = {
+            ru: {
+                title: "Валютный Дашборд",
+                subtitle: "Курсы валют и конвертер в реальном времени",
+                btnReset: "Сброс",
+                btnRefresh: "Обновить",
+                labelAmount: "Сумма:",
+                labelBase: "База:",
+                loading: "Получение свежих данных от API...",
+                errorApi: "Не удалось загрузить данные. Попробуйте позже.",
+                errorLoad: "Ошибка загрузки данных:",
+                errorApiReturn: "API вернул ошибку",
+                errorNetwork: "Сетевая ошибка при ответе сервера",
+                footerApi: "Данные предоставлены ExchangeRate-API",
+                timeCurrent: "Текущие дата и время:",
+                timeUpdated: "Данные обновлены:",
+                timeIn: "в",
+                cardTotal: "Итого в",
+                cardRate: "Курс:",
+                cardFor: "за",
+                addTitle: "Добавить валюту на панель",
+                addPlaceholder: "Введите код или название...",
+                addBtn: "Добавить валюту",
+                addNotFound: "Ничего не найдено",
+                resetConfirm: "Восстановить список валют по умолчанию (База: RUB)? Ваши настройки будут сброшены.",
+                resetTooltip: "Вернуть 9 валют по умолчанию"
+            },
+            en: {
+                title: "Currency Dashboard",
+                subtitle: "Real-time exchange rates and converter",
+                btnReset: "Reset",
+                btnRefresh: "Refresh",
+                labelAmount: "Amount:",
+                labelBase: "Base:",
+                loading: "Fetching fresh data from API...",
+                errorApi: "Failed to load data. Please try again later.",
+                errorLoad: "Data fetch error:",
+                errorApiReturn: "API returned an error",
+                errorNetwork: "Network error occurred",
+                footerApi: "Data provided by ExchangeRate-API",
+                timeCurrent: "Current date and time:",
+                timeUpdated: "Last updated:",
+                timeIn: "at",
+                cardTotal: "Total in",
+                cardRate: "Rate:",
+                cardFor: "for",
+                addTitle: "Add currency to dashboard",
+                addPlaceholder: "Enter code or name...",
+                addBtn: "Add Currency",
+                addNotFound: "No results found",
+                resetConfirm: "Restore default currency list (Base: RUB)? Your custom settings will be lost.",
+                resetTooltip: "Reset to default 9 currencies"
+            }
+        };
+
+        let currentLang = localStorage.getItem('user_lang') || 'ru';
+        let userCurrencies = JSON.parse(localStorage.getItem('user_monitored_currencies')) || [...DEFAULT_CURRENCIES];
+        let currencyNameFormatter = new Intl.DisplayNames([currentLang], { type: 'currency' });
+
+        let currentRates = {}; 
+        let allAvailableCurrencies = []; 
+        let selectedCurrencyToAdd = null;
+        let lastServerTime = null; 
+        let draggedCurrencyCode = null; 
+        
+        let previousBaseCurrency = localStorage.getItem('user_base_currency') || 'RUB';
+
+        const baseCurrencySelect = document.getElementById('baseCurrency');
+        const amountInput = document.getElementById('amountInput');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const refreshIcon = document.getElementById('refreshIcon');
+        const resetBtn = document.getElementById('resetBtn');
+        const loadingEl = document.getElementById('loading');
+        const errorEl = document.getElementById('error');
+        const dashboardEl = document.getElementById('dashboard');
+        const lastUpdatedEl = document.getElementById('lastUpdated');
+        const currentTimeEl = document.getElementById('currentTime');
+        const langRuBtn = document.getElementById('langRu');
+        const langEnBtn = document.getElementById('langEn');
+
+        function applyLocalization() {
+            document.title =<!DOCTYPE html>
 
 <html lang="ru">
 
