@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Валютный Дашборд</title>
     
-    <link rel="apple-touch-icon" href="icons8-currency-100.png">
+    <link class="apple-touch-icon" href="icons8-currency-100.png">
     <link rel="icon" type="image/png" sizes="192x192" href="icons8-currency-100.png">
     
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -19,10 +19,11 @@
         }
         .currency-card {
             touch-action: pan-y; /* Разрешаем только вертикальный скролл страницы пальцем */
+            backface-visibility: hidden;
+            transform: translateZ(0);
         }
         .currency-card.dragging-active {
-            opacity: 0.5;
-            border-color: #10b981;
+            opacity: 0.3;
         }
     </style>
 </head>
@@ -359,188 +360,194 @@
             initSearchLogic(baseCurrency);
             lucide.createIcons();
         }
+
+        function setupDragAndDrop(card) {
+            const handle = card.querySelector('.drag-handle');
+
+            // --- 1. НАВТИВНЫЙ HTML5 DRAG & DROP ДЛЯ ПК ---
+            handle.addEventListener('mousedown', () => {
+                card.setAttribute('draggable', 'true');
+            });
+
+            card.addEventListener('mouseup', () => {
+                card.removeAttribute('draggable');
+            });
+
+            card.addEventListener('dragstart', (e) => {
+                draggedCurrencyCode = card.getAttribute('data-currency');
+                card.classList.add('dragging-active');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            card.addEventListener('dragend', () => {
+                card.classList.remove('dragging-active');
+                card.removeAttribute('draggable');
+                document.querySelectorAll('.currency-card').forEach(el => el.classList.remove('border-emerald-500'));
+            });
+
+            card.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const targetCurrency = card.getAttribute('data-currency');
+                if (targetCurrency !== draggedCurrencyCode) {
+                    card.classList.add('border-emerald-500');
+                }
+            });
+
+            card.addEventListener('dragleave', () => {
+                card.classList.remove('border-emerald-500');
+            });
+
+            card.addEventListener('drop', (e) => {
+                e.preventDefault();
+                card.classList.remove('border-emerald-500');
+                const targetCurrency = card.getAttribute('data-currency');
+                if (!draggedCurrencyCode || draggedCurrencyCode === targetCurrency) return;
+
+                const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
+                const targetIndex = userCurrencies.indexOf(targetCurrency);
+
+                if (draggedIndex !== -1 && targetIndex !== -1) {
+                    userCurrencies.splice(draggedIndex, 1);
+                    userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
+                    saveToLocalStorage();
+                    updateDashboard();
+                }
+            });
+
+            // --- 2. МОБИЛЬНЫЙ ДРАГ-ПОЛИФИЛ БЕЗ СМЕЩЕНИЯ ЦЕНТРА ---
+            let isTouchActive = false;
+            let touchClone = null;      
+            let scrollInterval = null;  
             
-            function setupDragAndDrop(card) {
-                const handle = card.querySelector('.drag-handle');
-            
-                // --- 1. НАВТИВНЫЙ HTML5 DRAG & DROP ДЛЯ ПК (Идеально плавный) ---
-                handle.addEventListener('mousedown', () => {
-                    card.setAttribute('draggable', 'true');
-                });
-            
-                card.addEventListener('mouseup', () => {
-                    card.removeAttribute('draggable');
-                });
-            
-                card.addEventListener('dragstart', (e) => {
-                    draggedCurrencyCode = card.getAttribute('data-currency');
-                    card.classList.add('dragging-active');
-                    e.dataTransfer.effectAllowed = 'move';
-                });
-            
-                card.addEventListener('dragend', () => {
-                    card.classList.remove('dragging-active');
-                    card.removeAttribute('draggable');
-                    document.querySelectorAll('.currency-card').forEach(el => el.classList.remove('border-emerald-500'));
-                });
-            
-                card.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    const targetCurrency = card.getAttribute('data-currency');
-                    if (targetCurrency !== draggedCurrencyCode) {
-                        card.classList.add('border-emerald-500');
-                    }
-                });
-            
-                card.addEventListener('dragleave', () => {
-                    card.classList.remove('border-emerald-500');
-                });
-            
-                card.addEventListener('drop', (e) => {
-                    e.preventDefault();
-                    card.classList.remove('border-emerald-500');
-                    const targetCurrency = card.getAttribute('data-currency');
-                    if (!draggedCurrencyCode || draggedCurrencyCode === targetCurrency) return;
-            
-                    const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
-                    const targetIndex = userCurrencies.indexOf(targetCurrency);
-            
-                    if (draggedIndex !== -1 && targetIndex !== -1) {
-                        userCurrencies.splice(draggedIndex, 1);
-                        userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
-                        saveToLocalStorage();
-                        updateDashboard();
-                    }
-                });
-            
-                // --- 2. МОБИЛЬНЫЙ ДРАГ-ПОЛИФИЛ (С клонированием и автоскроллом) ---
-                let isTouchActive = false;
-                let touchClone = null;      // Сюда запишем полупрозрачный визуальный клон
-                let scrollInterval = null;  // Интервал для непрерывного автоскролла у краев
-            
-                handle.addEventListener('touchstart', (e) => {
-                    const touch = e.touches[0];
-                    draggedCurrencyCode = card.getAttribute('data-currency');
-                    isTouchActive = true;
-                    
-                    // Делаем оригинальную карточку полупрозрачной (эффект пустого места)
-                    card.style.opacity = '0.3';
-            
-                    // Создаем физический визуальный клон карточки, который полетит за пальцем
-                    touchClone = card.cloneNode(true);
-                    touchClone.style.position = 'fixed';
-                    touchClone.style.width = `${card.offsetWidth}px`;
-                    touchClone.style.height = `${card.offsetHeight}px`;
-                    
-                    // Центрируем клон относительно пальца пользователя
-                    touchClone.style.left = `${touch.clientX - (card.offsetWidth / 2)}px`;
-                    touchClone.style.top = `${touch.clientY - 30}px`; 
-                    
-                    // Задаем идеальный визуальный стиль переноса
-                    touchClone.style.opacity = '0.7';
-                    touchClone.style.transform = 'scale(1.05)';
-                    touchClone.style.boxShadow = '0 30px 40px rgba(0,0,0,0.6)';
-                    touchClone.style.zIndex = '9999';
-                    touchClone.style.pointerEvents = 'none'; // Чтобы клик пролетал сквозь клон к элементам ниже
-                    touchClone.classList.add('border-emerald-500');
-            
-                    document.body.appendChild(touchClone);
-                }, { passive: true });
-            
-                handle.addEventListener('touchmove', (e) => {
-                    if (!isTouchActive || !draggedCurrencyCode || !touchClone) return;
-            
-                    const touch = e.touches[0];
-                    if (e.cancelable) e.preventDefault();
-            
-                    // Двигаем полупрозрачный клон за пальцем
-                    touchClone.style.left = `${touch.clientX - (touchClone.offsetWidth / 2)}px`;
-                    touchClone.style.top = `${touch.clientY - 30}px`;
-            
-                    // --- УМНЫЙ АВТОСКРОЛЛ СТРАНИЦЫ НА СМАРТФОНЕ ---
-                    const windowHeight = window.innerHeight;
-                    const edgeThreshold = 100; // Зона активации скролла (100px от краев экрана)
-                    
-                    // Очищаем прошлый таймер прокрутки
-                    clearInterval(scrollInterval);
-                    scrollInterval = null;
-            
-                    if (touch.clientY > windowHeight - edgeThreshold) {
-                        // Палец у нижнего края экрана -> плавно скроллим вниз
-                        scrollInterval = setInterval(() => {
-                            window.scrollBy(0, 7); // Скорость скролла вниз (7px за шаг)
-                        }, 16);
-                    } else if (touch.clientY < edgeThreshold) {
-                        // Палец у верхнего края экрана -> плавно скроллим вверх
-                        scrollInterval = setInterval(() => {
-                            window.scrollBy(0, -7); // Скорость скролла вверх
-                        }, 16);
-                    }
-            
-                    // Определение карточки под пальцем (пролетает сквозь клон)
-                    const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
-                    if (!elementUnderTouch) return;
-                    
-                    const targetCard = elementUnderTouch.closest('.currency-card');
-            
-                    document.querySelectorAll('.currency-card').forEach(el => {
-                        if (el !== card) {
-                            el.classList.remove('border-emerald-500');
-                            el.style.transform = '';
-                        }
-                    });
-            
-                    if (targetCard && targetCard !== card) {
-                        targetCard.classList.add('border-emerald-500');
-                        targetCard.style.transform = 'scale(0.96)';
-                        targetCard.style.transition = 'transform 0.2s ease';
-                    }
-                }, { passive: false });
-            
-                handle.addEventListener('touchend', (e) => {
-                    if (!isTouchActive) return;
-                    isTouchActive = false;
-            
-                    // Останавливаем автоскролл и удаляем летающий клон с экрана
-                    clearInterval(scrollInterval);
-                    if (touchClone) {
-                        touchClone.remove();
-                        touchClone = null;
-                    }
-            
-                    // Возвращаем оригиналу нормальный вид
-                    card.style.opacity = '';
-            
-                    const touch = e.changedTouches[0];
-                    const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
-            
-                    document.querySelectorAll('.currency-card').forEach(el => {
+            // Переменные для хранения точного смещения пальца от угла карточки
+            let offsetX = 0;
+            let offsetY = 0;
+
+            handle.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                draggedCurrencyCode = card.getAttribute('data-currency');
+                isTouchActive = true;
+                
+                // Фиксируем физические координаты карточки на экране
+                const rect = card.getBoundingClientRect();
+                
+                // Считаем дельту: где именно внутри карточки находится палец
+                offsetX = touch.clientX - rect.left;
+                offsetY = touch.clientY - rect.top;
+
+                // Оставляем полупрозрачный след на месте карточки в сетке
+                card.classList.add('dragging-active');
+
+                // Создаем точный визуальный клон
+                touchClone = card.cloneNode(true);
+                touchClone.style.position = 'fixed';
+                touchClone.style.width = `${rect.width}px`;
+                touchClone.style.height = `${rect.height}px`;
+                
+                // Размещаем клон ИМЕННО в тех же координатах, где стоял оригинал (без скачков)
+                touchClone.style.left = `${rect.left}px`;
+                touchClone.style.top = `${rect.top}px`; 
+                
+                touchClone.style.opacity = '0.7';
+                touchClone.style.transform = 'scale(1.02)';
+                touchClone.style.boxShadow = '0 25px 35px rgba(0,0,0,0.5)';
+                touchClone.style.zIndex = '9999';
+                touchClone.style.pointerEvents = 'none'; 
+                touchClone.classList.add('border-emerald-500');
+
+                document.body.appendChild(touchClone);
+            }, { passive: true });
+
+            handle.addEventListener('touchmove', (e) => {
+                if (!isTouchActive || !draggedCurrencyCode || !touchClone) return;
+
+                const touch = e.touches[0];
+                if (e.cancelable) e.preventDefault();
+
+                // Двигаем клон с сохранением первоначальной точки захвата (учитываем offset)
+                touchClone.style.left = `${touch.clientX - offsetX}px`;
+                touchClone.style.top = `${touch.clientY - offsetY}px`;
+
+                // Автоскролл страницы у краев дисплея
+                const windowHeight = window.innerHeight;
+                const edgeThreshold = 90; 
+                
+                clearInterval(scrollInterval);
+                scrollInterval = null;
+
+                if (touch.clientY > windowHeight - edgeThreshold) {
+                    scrollInterval = setInterval(() => { window.scrollBy(0, 8); }, 16);
+                } else if (touch.clientY < edgeThreshold) {
+                    scrollInterval = setInterval(() => { window.scrollBy(0, -8); }, 16);
+                }
+
+                // Логика подсветки принимающей карточки
+                card.style.pointerEvents = 'none';
+                const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+                card.style.pointerEvents = 'auto';
+
+                if (!elementUnderTouch) return;
+                const targetCard = elementUnderTouch.closest('.currency-card');
+
+                document.querySelectorAll('.currency-card').forEach(el => {
+                    if (el !== card) {
                         el.classList.remove('border-emerald-500');
                         el.style.transform = '';
-                        el.style.transition = '';
-                    });
-            
-                    if (elementUnderTouch) {
-                        const targetCard = elementUnderTouch.closest('.currency-card');
-                        if (targetCard) {
-                            const targetCurrency = targetCard.getAttribute('data-currency');
-                            if (targetCurrency && targetCurrency !== draggedCurrencyCode) {
-                                const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
-                                const targetIndex = userCurrencies.indexOf(targetCurrency);
-            
-                                if (draggedIndex !== -1 && targetIndex !== -1) {
-                                    userCurrencies.splice(draggedIndex, 1);
-                                    userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
-                                    saveToLocalStorage();
-                                }
+                    }
+                });
+
+                if (targetCard && targetCard !== card) {
+                    targetCard.classList.add('border-emerald-500');
+                    targetCard.style.transform = 'scale(0.97)';
+                    targetCard.style.transition = 'transform 0.2s ease';
+                }
+            }, { passive: false });
+
+            handle.addEventListener('touchend', (e) => {
+                if (!isTouchActive) return;
+                isTouchActive = false;
+
+                clearInterval(scrollInterval);
+                if (touchClone) {
+                    touchClone.remove();
+                    touchClone = null;
+                }
+
+                card.classList.remove('dragging-active');
+
+                const touch = e.changedTouches[0];
+                
+                card.style.pointerEvents = 'none';
+                const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+                card.style.pointerEvents = 'auto';
+
+                document.querySelectorAll('.currency-card').forEach(el => {
+                    el.classList.remove('border-emerald-500');
+                    el.style.transform = '';
+                    el.style.transition = '';
+                });
+
+                if (elementUnderTouch) {
+                    const targetCard = elementUnderTouch.closest('.currency-card');
+                    if (targetCard) {
+                        const targetCurrency = targetCard.getAttribute('data-currency');
+                        if (targetCurrency && targetCurrency !== draggedCurrencyCode) {
+                            const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
+                            const targetIndex = userCurrencies.indexOf(targetCurrency);
+
+                            if (draggedIndex !== -1 && targetIndex !== -1) {
+                                userCurrencies.splice(draggedIndex, 1);
+                                userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
+                                saveToLocalStorage();
                             }
                         }
                     }
-            
-                    draggedCurrencyCode = null;
-                    updateDashboard();
-                });
-            }
+                }
+
+                draggedCurrencyCode = null;
+                updateDashboard();
+            });
+        }
 
         function initSearchLogic(baseCurrency) {
             const searchInput = document.getElementById('currencySearchInput');
