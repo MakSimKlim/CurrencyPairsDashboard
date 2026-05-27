@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Валютный Дашборд</title>
     
     <link rel="apple-touch-icon" href="icons8-currency-100.png">
@@ -12,42 +12,30 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <script>
-        window.DragDropTouch = { delay: 500 }; 
+        window.DragDropTouch = { delay: 0 }; 
     </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/drag-drop-touch/1.3.0/drag-drop-touch.esm.min.js" type="module"></script>
     <script src="https://cdn.jsdelivr.net/npm/drag-drop-touch@1.3.0/DragDropTouch.js"></script>
 
     <style>
-        /* Полностью блокируем системное выделение текста, чтобы избежать багов при Hold */
-        * {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-            -webkit-touch-callout: none;
-        }
-        
-        /* Разрешаем ввод в инпуты */
-        input, select {
-            -webkit-user-select: text;
-            user-select: text;
-        }
-
-        /* Карточки ВСЕГДА draggable, но благодаря delay="500" полифил не мешает скроллу */
+        /* Базовое состояние: карточки скроллятся нативно, перетаскивание отключено */
         .currency-card {
-            touch-action: pan-y !important;
-            -webkit-user-drag: element;
+            touch-action: pan-x pan-y;
+            -webkit-user-drag: none;
             transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
         }
 
-        /* Стилизация карточки в момент, когда она реально «взята» и тащится */
-        .currency-card:active, .currency-card[draggable="true"]:active {
-            background-color: #1e293b;
+        /* Состояние активации после долгого удержания (Hold) */
+        .currency-card.hold-active {
+            touch-action: none !important;
+            -webkit-user-drag: element !important;
+            background-color: #1e293b; /* Слегка подсвечиваем */
             box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.5);
             transform: scale(1.02);
         }
     </style>
 </head>
-<body class="bg-slate-900 text-slate-100 min-h-screen font-sans">
+<body class="bg-slate-900 text-slate-100 min-h-screen font-sans select-none">
 
     <div class="container mx-auto px-4 pb-8 max-w-4xl">
         
@@ -324,9 +312,9 @@
                 const currencySymbol = getCurrencySymbol(currency);
 
                 const card = document.createElement('div');
-                // ИСПРАВЛЕНО: Карточки ВСЕГДА имеют draggable="true". За задержку теперь отвечает сам полифил.
-                card.className = "currency-card bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 shadow-lg flex flex-col justify-between relative cursor-grab active:cursor-grabbing";
-                card.setAttribute('draggable', 'true');
+                // ИСПРАВЛЕНО: Изначально draggable="false" и класс currency-card
+                card.className = "currency-card bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 shadow-lg flex flex-col justify-between relative select-none";
+                card.setAttribute('draggable', 'false');
                 card.setAttribute('data-currency', currency);
 
                 card.innerHTML = `
@@ -359,6 +347,7 @@
                 `;
 
                 setupDragAndDropEvents(card);
+                setupTouchHoldLogic(card); // Подключаем систему Hold удержания
                 dashboardEl.appendChild(card);
             });
 
@@ -388,27 +377,83 @@
             lucide.createIcons();
         }
 
-        function setupDragAndDropEvents(card) {
-            // Защита кнопок внутри карточки от ложного срабатывания Drag
-            card.addEventListener('touchstart', (e) => {
-                if (e.target.closest('button') || e.target.closest('input') || e.target.closest('select')) {
-                    card.setAttribute('draggable', 'false');
-                } else {
+        // ИСПРАВЛЕНО: Функция обработки умного долгого нажатия (Hold) на смартфонах
+        function setupTouchHoldLogic(card) {
+            let holdTimer = null;
+            const HOLD_DURATION = 500; // Время удержания в мс до захвата карточки
+
+            function startHold(e) {
+                // Если нажали на кнопку минус ("удалить"), не запускаем удержание
+                if (e.target.closest('button')) return;
+
+                cleanHold();
+
+                holdTimer = setTimeout(() => {
+                    // Активируем режим перетаскивания для этой карточки
                     card.setAttribute('draggable', 'true');
+                    card.classList.add('hold-active');
+                    
+                    // Легкая вибрация смартфона для тактильного отклика (если доступно)
+                    if (navigator.vibrate) navigator.vibrate(40);
+
+                    // Генерируем искусственное событие начала перетаскивания для полифила
+                    const touch = e.touches ? e.touches[0] : e;
+                    const dragStartEvent = new DragEvent('dragstart', {
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: touch.clientX,
+                        clientY: touch.clientY
+                    });
+                    card.dispatchEvent(dragStartEvent);
+                }, HOLD_DURATION);
+            }
+
+            function cleanHold() {
+                if (holdTimer) {
+                    clearTimeout(holdTimer);
+                    holdTimer = null;
+                }
+            }
+
+            function resetCardState() {
+                cleanHold();
+                // Возвращаем карточку в режим обычного скролла
+                card.setAttribute('draggable', 'false');
+                card.classList.remove('hold-active');
+            }
+
+            // Слушатели тач-событий смартфона
+            card.addEventListener('touchstart', startHold, { passive: true });
+            card.addEventListener('touchmove', (e) => {
+                // Если палец двигается ДО того как сработал таймер — значит это скролл, отменяем Hold
+                if (!card.classList.contains('hold-active')) {
+                    cleanHold();
                 }
             }, { passive: true });
+            
+            card.addEventListener('touchend', resetCardState);
+            card.addEventListener('touchcancel', resetCardState);
 
-            card.addEventListener('dragstart', (e) => {
+            // На десктопе сохраняем стандартное поведение мыши без задержек
+            card.addEventListener('mousedown', (e) => {
+                if (e.target.closest('button')) return;
+                card.setAttribute('draggable', 'true');
+            });
+            card.addEventListener('mouseup', () => {
+                if (!draggedCurrencyCode) card.setAttribute('draggable', 'false');
+            });
+        }
+
+        function setupDragAndDropEvents(card) {
+            card.addEventListener('dragstart', () => {
                 draggedCurrencyCode = card.getAttribute('data-currency');
                 card.classList.add('opacity-40', 'border-emerald-500');
-                
-                // Тактильный виброотклик в момент, когда Hold сработал и карточка "оторвалась"
-                if (navigator.vibrate) navigator.vibrate(40);
             });
 
             card.addEventListener('dragend', () => {
                 draggedCurrencyCode = null;
-                card.classList.remove('opacity-40', 'border-emerald-500');
+                card.setAttribute('draggable', 'false');
+                card.classList.remove('opacity-40', 'border-emerald-500', 'hold-active');
                 document.querySelectorAll('[data-currency]').forEach(el => el.classList.remove('border-emerald-500', 'translate-y-1'));
             });
 
@@ -616,120 +661,4 @@
         });
     </script>
 </body>
-</html>// ИСПРАВЛЕНО: Полная блокировка свайпа. Перетаскивание активируется СТРОГО после 500мс удержания
-function setupTouchHoldLogic(card) {
-    let holdTimer = null;
-    const HOLD_DURATION = 500; // Время удержания в мс
-
-    function startHold(e) {
-        // Если нажали на кнопку удаления, игнорируем
-        if (e.target.closest('button')) return;
-
-        cleanHold();
-
-        holdTimer = setTimeout(() => {
-            // 1. Разрешаем перетаскивание для браузера
-            card.setAttribute('draggable', 'true');
-            card.classList.add('hold-active');
-            
-            // 2. Виброотклик
-            if (navigator.vibrate) navigator.vibrate(40);
-
-            // 3. ТРИГГЕР ДЛЯ ПОЛИФИЛА: Принудительно заставляем DragDropTouch думать, 
-            // что dragstart начался прямо сейчас в этой точке, игнорируя предыдущий свайп
-            const touch = e.touches ? e.touches[0] : e;
-            
-            // Очищаем внутренний триггер полифила, если он пытался запуститься раньше времени
-            if (window.DragDropTouch && window.DragDropTouch._instance) {
-                window.DragDropTouch._instance._dragSource = null;
-            }
-
-            const dragStartEvent = new DragEvent('dragstart', {
-                bubbles: true,
-                cancelable: true,
-                clientX: touch.clientX,
-                clientY: touch.clientY
-            });
-            card.dispatchEvent(dragStartEvent);
-        }, HOLD_DURATION);
-    }
-
-    function cleanHold() {
-        if (holdTimer) {
-            clearTimeout(holdTimer);
-            holdTimer = null;
-        }
-    }
-
-    function resetCardState(e) {
-        // Если таймер не отработал (был просто быстрый свайп или клик) — отменяем всё
-        if (!card.classList.contains('hold-active')) {
-            cleanHold();
-            card.setAttribute('draggable', 'false');
-        }
-    }
-
-    // Слушатели тач-событий
-    card.addEventListener('touchstart', startHold, { passive: true });
-    
-    card.addEventListener('touchmove', (e) => {
-        // Если палец двинулся ДО истечения 500мс — это обычный скролл страницы.
-        // Сбрасываем таймер, чтобы карточка не захватилась в процессе скролла.
-        if (!card.classList.contains('hold-active')) {
-            cleanHold();
-        }
-    }, { passive: true });
-    
-    card.addEventListener('touchend', resetCardState);
-    card.addEventListener('touchcancel', resetCardState);
-
-    // Поведение для десктопных мышей (без задержки)
-    card.addEventListener('mousedown', (e) => {
-        if (e.target.closest('button')) return;
-        card.setAttribute('draggable', 'true');
-    });
-    card.addEventListener('mouseup', () => {
-        if (!draggedCurrencyCode) card.setAttribute('draggable', 'false');
-    });
-}
-
-function setupDragAndDropEvents(card) {
-    card.addEventListener('dragstart', () => {
-        draggedCurrencyCode = card.getAttribute('data-currency');
-        card.classList.add('opacity-40', 'border-emerald-500');
-    });
-
-    card.addEventListener('dragend', () => {
-        draggedCurrencyCode = null;
-        
-        // ИСПРАВЛЕНО: После окончания переноса жестко возвращаем всем карточкам исходное состояние
-        document.querySelectorAll('.currency-card').forEach(el => {
-            el.setAttribute('draggable', 'false');
-            el.classList.remove('opacity-40', 'border-emerald-500', 'hold-active', 'translate-y-1');
-        });
-    });
-
-    card.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        const targetCurrency = card.getAttribute('data-currency');
-        if (targetCurrency !== draggedCurrencyCode) card.classList.add('border-emerald-500', 'translate-y-1');
-    });
-
-    card.addEventListener('dragleave', () => card.classList.remove('border-emerald-500', 'translate-y-1'));
-
-    card.addEventListener('drop', (e) => {
-        e.preventDefault();
-        const targetCurrency = card.getAttribute('data-currency');
-        if (!draggedCurrencyCode || draggedCurrencyCode === targetCurrency) return;
-
-        const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
-        const targetIndex = userCurrencies.indexOf(targetCurrency);
-
-        if (draggedIndex !== -1 && targetIndex !== -1) {
-            userCurrencies.splice(draggedIndex, 1);
-            userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
-            saveToLocalStorage();
-            updateDashboard();
-        }
-    });
-}
+</html>
