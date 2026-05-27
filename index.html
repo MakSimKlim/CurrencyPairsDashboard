@@ -12,16 +12,16 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <style>
-        /* Оптимизация для плавного рендеринга на ПК и мобильных */
-        .currency-card {
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-            backface-visibility: hidden;
-            transform: translateZ(0);
+        /* Убираем любые системные конфликты жестов */
+        .drag-handle {
+            touch-action: none;
+            -webkit-user-drag: none;
         }
-        /* Стили при перетаскивании на ПК */
-        .currency-card.dragging {
-            opacity: 0.4;
-            transform: scale(0.95);
+        .currency-card {
+            touch-action: pan-y; /* Разрешаем только вертикальный скролл страницы пальцем */
+        }
+        .currency-card.dragging-active {
+            opacity: 0.5;
             border-color: #10b981;
         }
     </style>
@@ -296,15 +296,14 @@
                 const currencySymbol = getCurrencySymbol(currency);
 
                 const card = document.createElement('div');
-                card.className = "currency-card bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 transition-colors duration-150 flex flex-col justify-between relative select-none";
-                card.setAttribute('draggable', 'true');
+                card.className = "currency-card bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 flex flex-col justify-between relative select-none transition-all duration-150";
                 card.setAttribute('data-currency', currency);
 
                 card.innerHTML = `
                     <div>
                         <div class="flex justify-between items-start mb-2">
                             <div class="flex items-center gap-1">
-                                <div class="drag-handle flex items-center justify-center w-11 h-11 -ml-3 -mt-3 text-slate-500 active:text-emerald-400 cursor-grab z-10" style="touch-action: none;">
+                                <div class="drag-handle flex items-center justify-center w-11 h-11 -ml-3 -mt-3 text-slate-500 active:text-emerald-400 cursor-grab z-10">
                                     <i data-lucide="grip-vertical" class="w-5 h-5 pointer-events-none"></i>
                                 </div>
                                 <span class="text-xs font-bold tracking-wider uppercase text-slate-400 bg-slate-700/50 px-2 py-1 rounded">
@@ -362,19 +361,33 @@
         }
 
         function setupDragAndDrop(card) {
-            // --- 1. НАВТИВНЫЙ HTML5 DRAG & DROP ДЛЯ ПК (Идеально плавный скролл мыши) ---
+            const handle = card.querySelector('.drag-handle');
+
+            // --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ ДЛЯ ПК ---
+            // Атрибут draggable включается ТОЛЬКО когда зажали мышь на иконке ручки
+            handle.addEventListener('mousedown', () => {
+                card.setAttribute('draggable', 'true');
+            });
+
+            // Как только мышь отпущена — выключаем draggable, возвращая нативный скролл колесиком
+            card.addEventListener('mouseup', () => {
+                card.removeAttribute('draggable');
+            });
+
             card.addEventListener('dragstart', (e) => {
                 draggedCurrencyCode = card.getAttribute('data-currency');
-                card.classList.add('dragging');
+                card.classList.add('dragging-active');
                 e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', draggedCurrencyCode);
             });
 
             card.addEventListener('dragend', () => {
-                card.classList.remove('dragging');
+                card.classList.remove('dragging-active');
+                card.removeAttribute('draggable');
                 document.querySelectorAll('.currency-card').forEach(el => el.classList.remove('border-emerald-500'));
             });
 
+            // Фикс бешеной скорости: вместо мгновенной перерисовки в dragover,
+            // мы просто визуально подсвечиваем карточки.
             card.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 const targetCurrency = card.getAttribute('data-currency');
@@ -400,35 +413,30 @@
                     userCurrencies.splice(draggedIndex, 1);
                     userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
                     saveToLocalStorage();
+                    // Перерисовка происходит ОДИН раз в самом конце жеста
                     updateDashboard();
                 }
             });
 
-            // --- 2. ЧИСТЫЙ МОБИЛЬНЫЙ ПОЛИФИЛ (Только на ручке захвата) ---
-            const handle = card.querySelector('.drag-handle');
-            
+            // --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ ДЛЯ СМАРТФОНОВ ---
+            // Полностью изолированный тач, не вызывающий ложных срабатываний ОС
+            let isTouchActive = false;
+
             handle.addEventListener('touchstart', (e) => {
-                const touch = e.touches[0];
                 draggedCurrencyCode = card.getAttribute('data-currency');
-                
-                // Эмулируем событие начала перетаскивания для нативной структуры
-                card.classList.add('dragging');
-                
-                // Запоминаем стартовые точки для корректного отслеживания перемещения пальца
-                handle.dataset.touchStartX = touch.clientX;
-                handle.dataset.touchStartY = touch.clientY;
+                isTouchActive = true;
+                card.classList.add('dragging-active');
             }, { passive: true });
 
             handle.addEventListener('touchmove', (e) => {
-                if (!draggedCurrencyCode) return;
-                
+                if (!isTouchActive || !draggedCurrencyCode) return;
+
                 const touch = e.touches[0];
                 
-                // Блокируем скролл страницы только тогда, когда палец ПЕРЕМЕЩАЕТСЯ по ручке захвата
+                // Блокируем жест сворачивания браузера, перехватывая управление внутри ручки
                 if (e.cancelable) e.preventDefault();
-                
-                // Находим элемент под пальцем в реальном времени
-                card.style.pointerEvents = 'none'; // Временно скрываем верхнюю карточку для луча elementFromPoint
+
+                card.style.pointerEvents = 'none';
                 const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
                 card.style.pointerEvents = 'auto';
 
@@ -442,14 +450,15 @@
                 if (targetCard && targetCard !== card) {
                     targetCard.classList.add('border-emerald-500');
                 }
-            }, { passive: false }); // Важно для предотвращения дефолтного скролла при удержании ручки
+            }, { passive: false });
 
             handle.addEventListener('touchend', (e) => {
-                if (!draggedCurrencyCode) return;
-                card.classList.remove('dragging');
+                if (!isTouchActive) return;
+                isTouchActive = false;
+                card.classList.remove('dragging-active');
 
                 const touch = e.changedTouches[0];
-                
+
                 card.style.pointerEvents = 'none';
                 const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
                 card.style.pointerEvents = 'auto';
@@ -472,7 +481,7 @@
                         }
                     }
                 }
-                
+
                 draggedCurrencyCode = null;
                 updateDashboard();
             });
