@@ -362,32 +362,28 @@
 
         function setupDragAndDrop(card) {
             const handle = card.querySelector('.drag-handle');
-
-            // --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ ДЛЯ ПК ---
-            // Атрибут draggable включается ТОЛЬКО когда зажали мышь на иконке ручки
+        
+            // --- 1. НАВТИВНЫЙ HTML5 DRAG & DROP ДЛЯ ПК ---
             handle.addEventListener('mousedown', () => {
                 card.setAttribute('draggable', 'true');
             });
-
-            // Как только мышь отпущена — выключаем draggable, возвращая нативный скролл колесиком
+        
             card.addEventListener('mouseup', () => {
                 card.removeAttribute('draggable');
             });
-
+        
             card.addEventListener('dragstart', (e) => {
                 draggedCurrencyCode = card.getAttribute('data-currency');
                 card.classList.add('dragging-active');
                 e.dataTransfer.effectAllowed = 'move';
             });
-
+        
             card.addEventListener('dragend', () => {
                 card.classList.remove('dragging-active');
                 card.removeAttribute('draggable');
                 document.querySelectorAll('.currency-card').forEach(el => el.classList.remove('border-emerald-500'));
             });
-
-            // Фикс бешеной скорости: вместо мгновенной перерисовки в dragover,
-            // мы просто визуально подсвечиваем карточки.
+        
             card.addEventListener('dragover', (e) => {
                 e.preventDefault();
                 const targetCurrency = card.getAttribute('data-currency');
@@ -395,76 +391,95 @@
                     card.classList.add('border-emerald-500');
                 }
             });
-
+        
             card.addEventListener('dragleave', () => {
                 card.classList.remove('border-emerald-500');
             });
-
+        
             card.addEventListener('drop', (e) => {
                 e.preventDefault();
                 card.classList.remove('border-emerald-500');
                 const targetCurrency = card.getAttribute('data-currency');
                 if (!draggedCurrencyCode || draggedCurrencyCode === targetCurrency) return;
-
+        
                 const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
                 const targetIndex = userCurrencies.indexOf(targetCurrency);
-
+        
                 if (draggedIndex !== -1 && targetIndex !== -1) {
                     userCurrencies.splice(draggedIndex, 1);
                     userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
                     saveToLocalStorage();
-                    // Перерисовка происходит ОДИН раз в самом конце жеста
                     updateDashboard();
                 }
             });
-
-            // --- БЕЗОПАСНАЯ ИНИЦИАЛИЗАЦИЯ ДЛЯ СМАРТФОНОВ ---
-            // Полностью изолированный тач, не вызывающий ложных срабатываний ОС
+        
+            // --- 2. МОБИЛЬНЫЙ ПОЛИФИЛ С АНИМАЦИЕЙ И ПОЛУПРОЗРАЧНОСТЬЮ ---
             let isTouchActive = false;
-
+        
             handle.addEventListener('touchstart', (e) => {
                 draggedCurrencyCode = card.getAttribute('data-currency');
                 isTouchActive = true;
-                card.classList.add('dragging-active');
+                
+                // Визуальный отклик захвата для смартфона:
+                // Делаем карточку полупрозрачной и слегка увеличиваем её, создавая эффект "отрыва" от экрана
+                card.style.opacity = '0.4';
+                card.style.transform = 'scale(1.03)';
+                card.style.boxShadow = '0 20px 25px -5px rgba(0, 0, 0, 0.5)';
+                card.classList.add('border-emerald-500', 'z-50');
             }, { passive: true });
-
+        
             handle.addEventListener('touchmove', (e) => {
                 if (!isTouchActive || !draggedCurrencyCode) return;
-
+        
                 const touch = e.touches[0];
-                
-                // Блокируем жест сворачивания браузера, перехватывая управление внутри ручки
                 if (e.cancelable) e.preventDefault();
-
+        
                 card.style.pointerEvents = 'none';
                 const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
                 card.style.pointerEvents = 'auto';
-
+        
                 if (!elementUnderTouch) return;
                 const targetCard = elementUnderTouch.closest('.currency-card');
-
+        
+                // Сбрасываем рамки со всех карт, кроме текущей
                 document.querySelectorAll('.currency-card').forEach(el => {
-                    if (el !== card) el.classList.remove('border-emerald-500');
+                    if (el !== card) {
+                        el.classList.remove('border-emerald-500');
+                        el.style.transform = ''; // Возвращаем обычный размер
+                    }
                 });
-
+        
+                // Если палец завис над другой карточкой, плавно уменьшаем её, 
+                // показывая, что она уступает место
                 if (targetCard && targetCard !== card) {
                     targetCard.classList.add('border-emerald-500');
+                    targetCard.style.transform = 'scale(0.97)';
+                    targetCard.style.transition = 'transform 0.2s ease, border-color 0.2s ease';
                 }
             }, { passive: false });
-
+        
             handle.addEventListener('touchend', (e) => {
                 if (!isTouchActive) return;
                 isTouchActive = false;
-                card.classList.remove('dragging-active');
-
+        
+                // Мгновенно сбрасываем стили трансформации перед перерисовкой DOM
+                card.style.opacity = '';
+                card.style.transform = '';
+                card.style.boxShadow = '';
+                card.classList.remove('border-emerald-500', 'z-50');
+        
                 const touch = e.changedTouches[0];
-
+        
                 card.style.pointerEvents = 'none';
                 const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
                 card.style.pointerEvents = 'auto';
-
-                document.querySelectorAll('.currency-card').forEach(el => el.classList.remove('border-emerald-500'));
-
+        
+                document.querySelectorAll('.currency-card').forEach(el => {
+                    el.classList.remove('border-emerald-500');
+                    el.style.transform = '';
+                    el.style.transition = '';
+                });
+        
                 if (elementUnderTouch) {
                     const targetCard = elementUnderTouch.closest('.currency-card');
                     if (targetCard) {
@@ -472,7 +487,7 @@
                         if (targetCurrency && targetCurrency !== draggedCurrencyCode) {
                             const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
                             const targetIndex = userCurrencies.indexOf(targetCurrency);
-
+        
                             if (draggedIndex !== -1 && targetIndex !== -1) {
                                 userCurrencies.splice(draggedIndex, 1);
                                 userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
@@ -481,7 +496,7 @@
                         }
                     }
                 }
-
+        
                 draggedCurrencyCode = null;
                 updateDashboard();
             });
