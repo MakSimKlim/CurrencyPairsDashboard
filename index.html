@@ -315,3 +315,307 @@
                         </div>
                         <button onclick="removeCurrency('${currency}')" 
                             class="bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white p-1.5 rounded transition cursor-pointer flex items-center justify-center focus:outline-none">
+                            <i data-lucide="minus" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                `;
+
+                setupDragAndDropEvents(card);
+                dashboardEl.appendChild(card);
+            });
+
+            const addBlock = document.createElement('div');
+            addBlock.className = "bg-slate-800/40 border border-dashed border-slate-700 rounded-xl p-5 flex flex-col justify-between min-h-[160px] relative";
+            addBlock.id = "searchContainer";
+            addBlock.innerHTML = `
+                <div>
+                    <h3 class="text-sm font-medium text-slate-400 mb-3">${i18n[currentLang].addTitle}</h3>
+                    <div class="relative">
+                        <input type="text" id="currencySearchInput" placeholder="${i18n[currentLang].addPlaceholder}" autocomplete="off"
+                            class="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute right-3 top-2.5 pointer-events-none"></i>
+                        <div id="currencyDropdown" class="hidden absolute left-0 right-0 top-full mt-1 max-h-48 bg-slate-800 border border-slate-700 rounded shadow-2xl overflow-y-auto z-50"></div>
+                    </div>
+                </div>
+                <button id="addCurrencyBtn" onclick="addCurrency()" disabled
+                    class="mt-4 w-full flex items-center justify-center gap-2 bg-emerald-600/50 text-emerald-300 opacity-60 px-4 py-2 rounded font-medium transition cursor-not-allowed">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    ${i18n[currentLang].addBtn}
+                </button>
+            `;
+            
+            dashboardEl.appendChild(addBlock);
+            selectedCurrencyToAdd = null;
+            initSearchLogic(baseCurrency);
+            lucide.createIcons();
+        }
+
+        function setupDragAndDropEvents(card) {
+            // --- МЫШЬ (Обычный HTML5 Drag and Drop) ---
+            card.addEventListener('dragstart', () => {
+                draggedCurrencyCode = card.getAttribute('data-currency');
+                card.classList.add('opacity-40', 'scale-95', 'border-emerald-500');
+            });
+
+            card.addEventListener('dragend', () => {
+                card.classList.remove('opacity-40', 'scale-95', 'border-emerald-500');
+                document.querySelectorAll('[data-currency]').forEach(el => el.classList.remove('border-emerald-500', 'translate-y-1'));
+            });
+
+            card.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const targetCurrency = card.getAttribute('data-currency');
+                if (targetCurrency !== draggedCurrencyCode) card.classList.add('border-emerald-500', 'translate-y-1');
+            });
+
+            card.addEventListener('dragleave', () => card.classList.remove('border-emerald-500', 'translate-y-1'));
+
+            card.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const targetCurrency = card.getAttribute('data-currency');
+                if (!draggedCurrencyCode || draggedCurrencyCode === targetCurrency) return;
+
+                const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
+                const targetIndex = userCurrencies.indexOf(targetCurrency);
+
+                if (draggedIndex !== -1 && targetIndex !== -1) {
+                    userCurrencies.splice(draggedIndex, 1);
+                    userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
+                    saveToLocalStorage();
+                    updateDashboard();
+                }
+            });
+
+            // --- СМАРТФОНЫ (Идеально плавные Touch Events с изоляцией скролла) ---
+            const handle = card.querySelector('.drag-handle');
+            let startX = 0, startY = 0;
+            let initialClientX = 0, initialClientY = 0;
+            let isTouchDragging = false;
+            let currentTargetCard = null;
+
+            handle.addEventListener('touchstart', (e) => {
+                const touch = e.touches[0];
+                
+                // Фиксируем начальные глобальные координаты тача
+                initialClientX = touch.clientX;
+                initialClientY = touch.clientY;
+                
+                // Фиксируем текущее физическое положение карточки на экране перед переносом в fixed
+                const rect = card.getBoundingClientRect();
+                startX = rect.left;
+                startY = rect.top;
+
+                draggedCurrencyCode = card.getAttribute('data-currency');
+                isTouchDragging = true;
+
+                // Задаем явные размеры fixed-элемента, чтобы он не схлопнулся
+                card.style.width = `${rect.width}px`;
+                card.style.height = `${rect.height}px`;
+                card.style.position = 'fixed';
+                card.style.left = `${startX}px`;
+                card.style.top = `${startY}px`;
+                card.style.transition = 'none';
+                
+                card.classList.add('z-50', 'border-emerald-500', 'shadow-2xl');
+            }, { passive: false });
+
+            handle.addEventListener('touchmove', (e) => {
+                if (!isTouchDragging || !draggedCurrencyCode) return;
+                
+                // Важно: Полная блокировка прыжков нативного скролла в момент ведения элемента!
+                if (e.cancelable) e.preventDefault(); 
+                
+                const touch = e.touches[0];
+                
+                // Считаем дельту перемещения от стартовой точки тача
+                const deltaX = touch.clientX - initialClientX;
+                const deltaY = touch.clientY - initialClientY;
+                
+                // Перемещаем карточку по экрану через левые координаты без искажения масштаба контейнера
+                card.style.left = `${startX + deltaX}px`;
+                card.style.top = `${startY + deltaY}px`;
+
+                // Трюк "прозрачности" слоя для корректного поиска элементов под пальцем
+                card.style.pointerEvents = 'none';
+                const elementUnderTouch = document.elementFromPoint(touch.clientX, touch.clientY);
+                card.style.pointerEvents = 'auto';
+
+                if (!elementUnderTouch) return;
+                const targetCard = elementUnderTouch.closest('[data-currency]');
+                
+                if (targetCard && targetCard !== card) {
+                    if (currentTargetCard !== targetCard) {
+                        if (currentTargetCard) currentTargetCard.classList.remove('border-emerald-500', 'scale-95');
+                        currentTargetCard = targetCard;
+                        // Визуальный отклик подсвечиваемой карточки
+                        currentTargetCard.classList.add('border-emerald-500', 'scale-95');
+                    }
+                } else {
+                    if (currentTargetCard) {
+                        currentTargetCard.classList.remove('border-emerald-500', 'scale-95');
+                        currentTargetCard = null;
+                    }
+                }
+            }, { passive: false });
+
+            handle.addEventListener('touchend', (e) => {
+                if (!isTouchDragging) return;
+                isTouchDragging = false;
+
+                // Убираем fixed-стили и возвращаем в поток
+                card.style.position = '';
+                card.style.width = '';
+                card.style.height = '';
+                card.style.left = '';
+                card.style.top = '';
+                card.style.transform = '';
+                card.style.transition = '';
+                card.classList.remove('z-50', 'border-emerald-500', 'shadow-2xl');
+
+                if (currentTargetCard) {
+                    currentTargetCard.classList.remove('border-emerald-500', 'scale-95');
+                    const targetCurrency = currentTargetCard.getAttribute('data-currency');
+                    
+                    if (targetCurrency && targetCurrency !== draggedCurrencyCode) {
+                        const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
+                        const targetIndex = userCurrencies.indexOf(targetCurrency);
+
+                        if (draggedIndex !== -1 && targetIndex !== -1) {
+                            userCurrencies.splice(draggedIndex, 1);
+                            userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
+                            saveToLocalStorage();
+                        }
+                    }
+                    currentTargetCard = null;
+                }
+                
+                draggedCurrencyCode = null;
+                
+                // Главный фикс скачков: рендерим дашборд после того, как палец оторван,
+                // давая браузеру 16мс (1 кадр), чтобы завершить жест скролла без дёрганий экрана.
+                setTimeout(() => {
+                    updateDashboard();
+                }, 16);
+            });
+        }
+
+        function initSearchLogic(baseCurrency) {
+            const searchInput = document.getElementById('currencySearchInput');
+            const dropdown = document.getElementById('currencyDropdown');
+            const addBtn = document.getElementById('addCurrencyBtn');
+            const container = document.getElementById('searchContainer');
+
+            if (!searchInput || !dropdown || !addBtn) return;
+
+            const availableCurrencies = allAvailableCurrencies
+                .filter(code => !userCurrencies.includes(code) && code !== baseCurrency)
+                .map(code => ({ code, name: getCurrencyName(code), symbol: getCurrencySymbol(code) }))
+                .sort((a, b) => a.code.localeCompare(b.code));
+
+            function renderDropdownItems(filterText = '') {
+                const query = filterText.toLowerCase().trim();
+                const filtered = availableCurrencies.filter(item => item.code.toLowerCase().includes(query) || item.name.toLowerCase().includes(query));
+                dropdown.innerHTML = '';
+                if (filtered.length === 0) {
+                    dropdown.innerHTML = `<div class="px-3 py-2 text-xs text-slate-500 italic">${i18n[currentLang].addNotFound}</div>`;
+                    return;
+                }
+                filtered.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = "px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer transition flex justify-between items-center";
+                    const displaySymbol = item.symbol ? ` (${item.symbol})` : '';
+                    div.innerHTML = `<span><span class="font-medium text-white">${item.code}</span>${displaySymbol}</span><span class="text-xs text-slate-400 truncate max-w-[180px]">${item.name}</span>`;
+                    div.addEventListener('click', () => {
+                        searchInput.value = `${item.code}${displaySymbol} — ${item.name}`;
+                        selectedCurrencyToAdd = item.code;
+                        addBtn.disabled = false;
+                        addBtn.className = "mt-4 w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-medium transition cursor-pointer";
+                        dropdown.classList.add('hidden');
+                    });
+                    dropdown.appendChild(div);
+                });
+            }
+
+            searchInput.addEventListener('focus', () => { renderDropdownItems(searchInput.value); dropdown.classList.remove('hidden'); });
+            searchInput.addEventListener('input', () => {
+                selectedCurrencyToAdd = null; addBtn.disabled = true;
+                addBtn.className = "mt-4 w-full flex items-center justify-center gap-2 bg-emerald-600/50 text-emerald-300 opacity-60 px-4 py-2 rounded font-medium transition cursor-not-allowed";
+                renderDropdownItems(searchInput.value); dropdown.classList.remove('hidden');
+            });
+            document.addEventListener('click', (e) => { if (!container.contains(e.target)) dropdown.classList.add('hidden'); });
+        }
+
+        function addCurrency() {
+            if (selectedCurrencyToAdd && !userCurrencies.includes(selectedCurrencyToAdd)) {
+                userCurrencies.push(selectedCurrencyToAdd);
+                saveToLocalStorage(); updateBaseSelectOptions(); updateDashboard();
+            }
+        }
+
+        function removeCurrency(code) {
+            userCurrencies = userCurrencies.filter(c => c !== code);
+            saveToLocalStorage();
+            if (baseCurrencySelect.value === code) {
+                const fallback = userCurrencies.includes('RUB') ? 'RUB' : userCurrencies[0];
+                previousBaseCurrency = fallback;
+                localStorage.setItem('user_base_currency', fallback);
+                updateBaseSelectOptions(fallback);
+                fetchExchangeRates();
+            } else { updateBaseSelectOptions(); updateDashboard(); }
+        }
+
+        function saveToLocalStorage() { localStorage.setItem('user_monitored_currencies', JSON.stringify(userCurrencies)); }
+
+        function showLoading(isLoading) {
+            if (isLoading) {
+                loadingEl.classList.remove('hidden'); dashboardEl.classList.add('hidden');
+                refreshIcon.classList.add('animate-spin'); refreshBtn.disabled = true;
+            } else {
+                loadingEl.classList.add('hidden'); dashboardEl.classList.remove('hidden');
+                refreshIcon.classList.remove('animate-spin'); refreshBtn.disabled = false;
+            }
+        }
+
+        function showError(message) { errorEl.classList.remove('hidden'); document.getElementById('errorText').textContent = message; dashboardEl.classList.add('hidden'); }
+        function hideError() { errorEl.classList.add('hidden'); }
+
+        function updateTimestamp() {
+            if (!lastServerTime) return;
+            const dateString = lastServerTime.toLocaleDateString(currentLang, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+            const timeString = lastServerTime.toLocaleTimeString(currentLang, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' });
+            lastUpdatedEl.textContent = `${i18n[currentLang].timeUpdated} ${dateString} ${i18n[currentLang].timeIn} ${timeString} UTC`;
+        }
+
+        function changeLanguage(lang) {
+            if (currentLang === lang) return;
+            currentLang = lang; localStorage.setItem('user_lang', lang);
+            applyLocalization(); updateCurrentTime(); updateTimestamp(); updateBaseSelectOptions(); updateDashboard();
+        }
+
+        baseCurrencySelect.addEventListener('change', handleBaseCurrencyChange);
+        refreshBtn.addEventListener('click', fetchExchangeRates);
+        amountInput.addEventListener('input', updateDashboard);
+        langRuBtn.addEventListener('click', () => changeLanguage('ru'));
+        langEnBtn.addEventListener('click', () => changeLanguage('en'));
+        resetBtn.addEventListener('click', () => {
+            if (confirm(i18n[currentLang].resetConfirm)) {
+                userCurrencies = [...DEFAULT_CURRENCIES]; 
+                previousBaseCurrency = 'RUB';
+                localStorage.setItem('user_base_currency', 'RUB');
+                saveToLocalStorage(); 
+                updateBaseSelectOptions('RUB'); 
+                fetchExchangeRates();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => { 
+            applyLocalization(); 
+            updateBaseSelectOptions(previousBaseCurrency);
+            lucide.createIcons(); 
+            updateCurrentTime(); 
+            setInterval(updateCurrentTime, 1000); 
+            fetchExchangeRates(); 
+        });
+    </script>
+</body>
+</html>
