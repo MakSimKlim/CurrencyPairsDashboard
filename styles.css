@@ -1,1 +1,22 @@
 /* styles.css */
+/* Убираем любые системные конфликты жестов */
+.drag-handle {
+    touch-action: none;
+    -webkit-user-drag: none;
+}
+
+.currency-card {
+    touch-action: pan-y; /* Разрешаем только вертикальный скролл страницы пальцем */
+    backface-visibility: hidden;
+    transform: translateZ(0);
+}
+
+.currency-card.dragging-active {
+    opacity: 0.3;
+}
+
+/* Предотвращаем стандартный скролл страницы только на перетаскиваемых карточках */
+[draggable="true"] {
+    touch-action: none;
+    -webkit-user-drag: element;
+}
