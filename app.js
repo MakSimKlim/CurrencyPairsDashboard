@@ -1,0 +1,490 @@
+       const API_URL = 'https://open.er-api.com/v6/latest/';
+        const DEFAULT_CURRENCIES = ['RUB', 'USD', 'EUR', 'KZT', 'BYN', 'CNY', 'GBP', 'JPY', 'TRY'];
+        
+        const i18n = {
+            ru: {
+                title: "Валютный Дашборд",
+                subtitle: "Курсы валют и конвертер в реальном времени",
+                btnReset: "Сброс",
+                btnRefresh: "Обновить",
+                labelAmount: "Сумма:",
+                labelBase: "База:",
+                loading: "Получение свежих данных от API...",
+                errorApi: "Не удалось загрузить данные. Попробуйте позже.",
+                errorLoad: "Ошибка загрузки данных:",
+                errorApiReturn: "API вернул ошибку",
+                errorNetwork: "Сетевая ошибка при ответе сервера",
+                footerApi: "Данные предоставлены ExchangeRate-API",
+                timeCurrent: "Текущие дата и время:",
+                timeUpdated: "Данные обновлены:",
+                timeIn: "в",
+                cardTotal: "Итого в",
+                cardRate: "Курс:",
+                cardFor: "за",
+                addTitle: "Добавить валюту на панель",
+                addPlaceholder: "Введите код или название...",
+                addBtn: "Добавить валюту",
+                addNotFound: "Ничего не найдено",
+                resetConfirm: "Восстановить список валют по умолчанию (База: RUB)? Ваши настройки будут сброшены.",
+                resetTooltip: "Вернуть 9 валют по умолчанию"
+            },
+            en: {
+                title: "Currency Dashboard",
+                subtitle: "Real-time exchange rates and converter",
+                btnReset: "Reset",
+                btnRefresh: "Refresh",
+                labelAmount: "Amount:",
+                labelBase: "Base:",
+                loading: "Fetching fresh data from API...",
+                errorApi: "Failed to load data. Please try again later.",
+                errorLoad: "Data fetch error:",
+                errorApiReturn: "API returned an error",
+                errorNetwork: "Network error occurred",
+                footerApi: "Data provided by ExchangeRate-API",
+                timeCurrent: "Current date and time:",
+                timeUpdated: "Last updated:",
+                timeIn: "at",
+                cardTotal: "Total in",
+                cardRate: "Rate:",
+                cardFor: "for",
+                addTitle: "Add currency to dashboard",
+                addPlaceholder: "Enter code or name...",
+                addBtn: "Add Currency",
+                addNotFound: "No results found",
+                resetConfirm: "Restore default currency list (Base: RUB)? Your custom settings will be lost.",
+                resetTooltip: "Reset to default 9 currencies"
+            }
+        };
+
+        let currentLang = localStorage.getItem('user_lang') || 'ru';
+        let userCurrencies = JSON.parse(localStorage.getItem('user_monitored_currencies')) || [...DEFAULT_CURRENCIES];
+        let currencyNameFormatter = new Intl.DisplayNames([currentLang], { type: 'currency' });
+
+        let currentRates = {}; 
+        let allAvailableCurrencies = []; 
+        let selectedCurrencyToAdd = null;
+        let lastServerTime = null; 
+        let draggedCurrencyCode = null; 
+        
+        let previousBaseCurrency = localStorage.getItem('user_base_currency') || 'RUB';
+
+        const baseCurrencySelect = document.getElementById('baseCurrency');
+        const amountInput = document.getElementById('amountInput');
+        const refreshBtn = document.getElementById('refreshBtn');
+        const refreshIcon = document.getElementById('refreshIcon');
+        const resetBtn = document.getElementById('resetBtn');
+        const loadingEl = document.getElementById('loading');
+        const errorEl = document.getElementById('error');
+        const dashboardEl = document.getElementById('dashboard');
+        const lastUpdatedEl = document.getElementById('lastUpdated');
+        const currentTimeEl = document.getElementById('currentTime');
+        const langRuBtn = document.getElementById('langRu');
+        const langEnBtn = document.getElementById('langEn');
+
+        function applyLocalization() {
+            document.title = i18n[currentLang].title;
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (i18n[currentLang][key]) el.textContent = i18n[currentLang][key];
+            });
+            document.getElementById('loadingText').textContent = i18n[currentLang].loading;
+            document.getElementById('footerApi').textContent = i18n[currentLang].footerApi;
+            resetBtn.setAttribute('title', i18n[currentLang].resetTooltip);
+            
+            if (currentLang === 'ru') {
+                langRuBtn.className = "cursor-pointer transition font-bold text-emerald-400";
+                langEnBtn.className = "cursor-pointer transition font-bold text-slate-500 hover:text-slate-300";
+            } else {
+                langEnBtn.className = "cursor-pointer transition font-bold text-emerald-400";
+                langRuBtn.className = "cursor-pointer transition font-bold text-slate-500 hover:text-slate-300";
+            }
+            currencyNameFormatter = new Intl.DisplayNames([currentLang], { type: 'currency' });
+        }
+
+        function getCurrencySymbol(code) {
+            try {
+                const parts = new Intl.NumberFormat(currentLang, { style: 'currency', currency: code }).formatToParts(1);
+                const currencyPart = parts.find(part => part.type === 'currency');
+                return (currencyPart && currencyPart.value) ? (currencyPart.value.trim().length >= 3 ? null : currencyPart.value.trim()) : null;
+            } catch (e) { return null; }
+        }
+
+        function getCurrencyName(code) {
+            try { return currencyNameFormatter.of(code) || code; } catch (e) { return code; }
+        }
+
+        function updateCurrentTime() {
+            const now = new Date();
+            const dateString = now.toLocaleDateString(currentLang, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+            const timeString = now.toLocaleTimeString(currentLang, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' });
+            if (currentTimeEl) currentTimeEl.textContent = `${i18n[currentLang].timeCurrent} ${dateString}, ${timeString} UTC`;
+        }
+
+        function updateBaseSelectOptions(currentSelectedValue) {
+            if (userCurrencies.length === 0) { baseCurrencySelect.innerHTML = ''; return; }
+            let previousSelection = currentSelectedValue || baseCurrencySelect.value;
+            if (!previousSelection || !userCurrencies.includes(previousSelection)) {
+                previousSelection = userCurrencies.includes('RUB') ? 'RUB' : userCurrencies[0];
+            }
+
+            baseCurrencySelect.removeEventListener('change', handleBaseCurrencyChange);
+            baseCurrencySelect.innerHTML = '';
+            userCurrencies.forEach(code => {
+                const option = document.createElement('option');
+                option.value = code;
+                const symbol = getCurrencySymbol(code);
+                option.textContent = symbol ? `${code} (${symbol})` : code;
+                if (code === previousSelection) option.selected = true;
+                baseCurrencySelect.appendChild(option);
+            });
+            
+            previousBaseCurrency = previousSelection;
+            localStorage.setItem('user_base_currency', previousSelection);
+            baseCurrencySelect.addEventListener('change', handleBaseCurrencyChange);
+        }
+
+        async function handleBaseCurrencyChange() {
+            const newBase = baseCurrencySelect.value;
+            const oldBase = previousBaseCurrency;
+
+            if (newBase === oldBase) return;
+
+            const newBaseIndex = userCurrencies.indexOf(newBase);
+            const oldBaseIndex = userCurrencies.indexOf(oldBase);
+
+            if (newBaseIndex !== -1 && oldBaseIndex !== -1) {
+                userCurrencies[newBaseIndex] = oldBase;
+                userCurrencies[oldBaseIndex] = newBase;
+            } else if (newBaseIndex !== -1 && oldBaseIndex === -1) {
+                userCurrencies[newBaseIndex] = oldBase;
+            }
+
+            previousBaseCurrency = newBase;
+            localStorage.setItem('user_base_currency', newBase);
+            saveToLocalStorage();
+            await fetchExchangeRates();
+        }
+
+        async function fetchExchangeRates() {
+            if (userCurrencies.length === 0) { showLoading(false); hideError(); updateDashboard(); return; }
+            let base = baseCurrencySelect.value;
+            if (!base || !userCurrencies.includes(base)) {
+                base = userCurrencies.includes(previousBaseCurrency) ? previousBaseCurrency : (userCurrencies.includes('RUB') ? 'RUB' : userCurrencies[0]);
+            }
+            showLoading(true); hideError();
+            try {
+                const response = await fetch(`${API_URL}${base}?_=${new Date().getTime()}`);
+                if (!response.ok) throw new Error(i18n[currentLang].errorNetwork);
+                const data = await response.json();
+                if (data.result === "success") {
+                    currentRates = data.rates; 
+                    allAvailableCurrencies = Object.keys(data.rates);
+                    lastServerTime = new Date(); 
+                    updateBaseSelectOptions(base);
+                    updateDashboard();
+                    updateTimestamp();
+                } else { throw new Error(i18n[currentLang].errorApiReturn); }
+            } catch (err) {
+                console.error(err);
+                showError(`${i18n[currentLang].errorLoad} ${err.message}`);
+            } finally { showLoading(false); }
+        }
+
+        function updateDashboard() {
+            const baseCurrency = baseCurrencySelect.value;
+            const amount = parseFloat(amountInput.value) || 0; 
+            dashboardEl.innerHTML = ''; 
+
+            userCurrencies.forEach(currency => {
+                if (currency === baseCurrency) return; 
+                if (!currentRates[currency]) return;
+
+                const rate = currentRates[currency];
+                const totalCalculated = amount * rate; 
+                const currencyName = getCurrencyName(currency);
+                const currencySymbol = getCurrencySymbol(currency);
+
+                const card = document.createElement('div');
+                card.className = "bg-slate-800 border border-slate-700/50 rounded-xl p-5 hover:border-slate-500/80 transition duration-200 shadow-lg flex flex-col justify-between relative cursor-grab active:cursor-grabbing transition-all duration-150 select-none";
+                card.setAttribute('draggable', 'true');
+                card.setAttribute('data-currency', currency);
+
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-1.5">
+                                <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-500 cursor-grab"></i>
+                                <span class="text-xs font-bold tracking-wider uppercase text-slate-400 bg-slate-700/50 px-2 py-1 rounded">
+                                    ${i18n[currentLang].cardTotal} ${currency} ${currencySymbol ? `(${currencySymbol})` : ''}
+                                </span>
+                            </div>
+                            <span class="text-xs text-slate-500 font-mono">${i18n[currentLang].cardRate} ${rate.toFixed(4)}</span>
+                        </div>
+                        <h3 class="text-sm font-medium text-slate-400 truncate pr-6 pl-5" title="${currencyName}">${currencyName}</h3>
+                    </div>
+                    <div class="mt-4 flex justify-between items-end pl-5">
+                        <div>
+                            <div class="text-2xl font-mono font-bold text-emerald-400 break-all">
+                                ${totalCalculated.toLocaleString(currentLang, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </div>
+                            <div class="text-xs text-slate-500 mt-1">
+                                ${i18n[currentLang].cardFor} ${amount.toLocaleString(currentLang)} ${baseCurrency}
+                            </div>
+                        </div>
+                        <button onclick="removeCurrency('${currency}')" 
+                            class="bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white p-1.5 rounded transition cursor-pointer flex items-center justify-center focus:outline-none">
+                            <i data-lucide="minus" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                `;
+
+                setupDragAndDropEvents(card);
+                dashboardEl.appendChild(card);
+            });
+
+            const addBlock = document.createElement('div');
+            addBlock.className = "bg-slate-800/40 border border-dashed border-slate-700 rounded-xl p-5 flex flex-col justify-between min-h-[160px] relative";
+            addBlock.id = "searchContainer";
+            addBlock.innerHTML = `
+                <div>
+                    <h3 class="text-sm font-medium text-slate-400 mb-3">${i18n[currentLang].addTitle}</h3>
+                    <div class="relative">
+                        <input type="text" id="currencySearchInput" placeholder="${i18n[currentLang].addPlaceholder}" autocomplete="off"
+                            class="w-full bg-slate-800 border border-slate-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition">
+                        <i data-lucide="search" class="w-4 h-4 text-slate-500 absolute right-3 top-2.5 pointer-events-none"></i>
+                        <div id="currencyDropdown" class="hidden absolute left-0 right-0 top-full mt-1 max-h-48 bg-slate-800 border border-slate-700 rounded shadow-2xl overflow-y-auto z-50"></div>
+                    </div>
+                </div>
+                <button id="addCurrencyBtn" onclick="addCurrency()" disabled
+                    class="mt-4 w-full flex items-center justify-center gap-2 bg-emerald-600/50 text-emerald-300 opacity-60 px-4 py-2 rounded font-medium transition cursor-not-allowed">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                    ${i18n[currentLang].addBtn}
+                </button>
+            `;
+            
+            dashboardEl.appendChild(addBlock);
+            selectedCurrencyToAdd = null;
+            initSearchLogic(baseCurrency);
+            lucide.createIcons();
+        }
+
+        function setupDragAndDropEvents(card) {
+            card.addEventListener('dragstart', () => {
+                draggedCurrencyCode = card.getAttribute('data-currency');
+                card.classList.add('opacity-40', 'scale-95', 'border-emerald-500');
+            });
+
+            card.addEventListener('dragend', () => {
+                card.classList.remove('opacity-40', 'scale-95', 'border-emerald-500');
+                document.querySelectorAll('[data-currency]').forEach(el => el.classList.remove('border-emerald-500', 'translate-y-1'));
+            });
+
+            card.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                const targetCurrency = card.getAttribute('data-currency');
+                if (targetCurrency !== draggedCurrencyCode) card.classList.add('border-emerald-500', 'translate-y-1');
+            });
+
+            card.addEventListener('dragleave', () => card.classList.remove('border-emerald-500', 'translate-y-1'));
+
+            card.addEventListener('drop', (e) => {
+                e.preventDefault();
+                const targetCurrency = card.getAttribute('data-currency');
+                if (!draggedCurrencyCode || draggedCurrencyCode === targetCurrency) return;
+
+                const draggedIndex = userCurrencies.indexOf(draggedCurrencyCode);
+                const targetIndex = userCurrencies.indexOf(targetCurrency);
+
+                if (draggedIndex !== -1 && targetIndex !== -1) {
+                    userCurrencies.splice(draggedIndex, 1);
+                    userCurrencies.splice(targetIndex, 0, draggedCurrencyCode);
+                    saveToLocalStorage();
+                    updateDashboard();
+                }
+            });
+        }
+
+        // ИСПРАВЛЕНО ДЛЯ СМАРТФОНОВ: Функция умного автоматического скролла страницы вверх/вниз при драге
+        function initAutoScroll() {
+            let scrollSpeed = 0;
+            let animationFrameId = null;
+            const scrollZoneHeight = 100; // Расстояние от края экрана в px, при котором начнется скролл
+            const maxSpeed = 12; // Максимальная скорость скролла в px за один фрейм
+
+            function handleScrollLoop() {
+                if (scrollSpeed !== 0) {
+                    window.scrollBy(0, scrollSpeed);
+                    animationFrameId = requestAnimationFrame(handleScrollLoop);
+                } else {
+                    animationFrameId = null;
+                }
+            }
+
+            function onDragOrTouchMove(e) {
+                if (!draggedCurrencyCode) return;
+
+                // Получаем координату Y пальца или мыши относительно экрана (viewport)
+                let clientY = 0;
+                if (e.touches && e.touches.length > 0) {
+                    clientY = e.touches[0].clientY;
+                } else if (e.clientY !== undefined) {
+                    clientY = e.clientY;
+                } else {
+                    return;
+                }
+
+                const windowHeight = window.innerHeight;
+
+                if (clientY < scrollZoneHeight) {
+                    // Рассчитываем скорость в зависимости от близости к самому верхнему краю
+                    const intensity = (scrollZoneHeight - clientY) / scrollZoneHeight;
+                    scrollSpeed = -Math.round(intensity * maxSpeed);
+                } else if (clientY > windowHeight - scrollZoneHeight) {
+                    // Рассчитываем скорость в зависимости от близости к нижнему краю
+                    const intensity = (clientY - (windowHeight - scrollZoneHeight)) / scrollZoneHeight;
+                    scrollSpeed = Math.round(intensity * maxSpeed);
+                } else {
+                    scrollSpeed = 0;
+                }
+
+                if (scrollSpeed !== 0 && !animationFrameId) {
+                    animationFrameId = requestAnimationFrame(handleScrollLoop);
+                }
+            }
+
+            function stopScroll() {
+                scrollSpeed = 0;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+            }
+
+            // Слушаем нативные drag-события десктопа + touch-события смартфона
+            document.addEventListener('drag', onDragOrTouchMove, { passive: false });
+            document.addEventListener('touchmove', onDragOrTouchMove, { passive: false });
+            
+            document.addEventListener('dragend', stopScroll);
+            document.addEventListener('touchend', stopScroll);
+        }
+
+        function initSearchLogic(baseCurrency) {
+            const searchInput = document.getElementById('currencySearchInput');
+            const dropdown = document.getElementById('currencyDropdown');
+            const addBtn = document.getElementById('addCurrencyBtn');
+            const container = document.getElementById('searchContainer');
+
+            if (!searchInput || !dropdown || !addBtn) return;
+
+            const availableCurrencies = allAvailableCurrencies
+                .filter(code => !userCurrencies.includes(code) && code !== baseCurrency)
+                .map(code => ({ code, name: getCurrencyName(code), symbol: getCurrencySymbol(code) }))
+                .sort((a, b) => a.code.localeCompare(b.code));
+
+            function renderDropdownItems(filterText = '') {
+                const query = filterText.toLowerCase().trim();
+                const filtered = availableCurrencies.filter(item => item.code.toLowerCase().includes(query) || item.name.toLowerCase().includes(query));
+                dropdown.innerHTML = '';
+                if (filtered.length === 0) {
+                    dropdown.innerHTML = `<div class="px-3 py-2 text-xs text-slate-500 italic">${i18n[currentLang].addNotFound}</div>`;
+                    return;
+                }
+                filtered.forEach(item => {
+                    const div = document.createElement('div');
+                    div.className = "px-3 py-2 text-sm text-slate-300 hover:bg-slate-700 hover:text-white cursor-pointer transition flex justify-between items-center";
+                    const displaySymbol = item.symbol ? ` (${item.symbol})` : '';
+                    div.innerHTML = `<span><span class="font-medium text-white">${item.code}</span>${displaySymbol}</span><span class="text-xs text-slate-400 truncate max-w-[180px]">${item.name}</span>`;
+                    div.addEventListener('click', () => {
+                        searchInput.value = `${item.code}${displaySymbol} — ${item.name}`;
+                        selectedCurrencyToAdd = item.code;
+                        addBtn.disabled = false;
+                        addBtn.className = "mt-4 w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-medium transition cursor-pointer";
+                        dropdown.classList.add('hidden');
+                    });
+                    dropdown.appendChild(div);
+                });
+            }
+
+            searchInput.addEventListener('focus', () => { renderDropdownItems(searchInput.value); dropdown.classList.remove('hidden'); });
+            searchInput.addEventListener('input', () => {
+                selectedCurrencyToAdd = null; addBtn.disabled = true;
+                addBtn.className = "mt-4 w-full flex items-center justify-center gap-2 bg-emerald-600/50 text-emerald-300 opacity-60 px-4 py-2 rounded font-medium transition cursor-not-allowed";
+                renderDropdownItems(searchInput.value); dropdown.classList.remove('hidden');
+            });
+            document.addEventListener('click', (e) => { if (!container.contains(e.target)) dropdown.classList.add('hidden'); });
+        }
+
+        function addCurrency() {
+            if (selectedCurrencyToAdd && !userCurrencies.includes(selectedCurrencyToAdd)) {
+                userCurrencies.push(selectedCurrencyToAdd);
+                saveToLocalStorage(); updateBaseSelectOptions(); updateDashboard();
+            }
+        }
+
+        function removeCurrency(code) {
+            userCurrencies = userCurrencies.filter(c => c !== code);
+            saveToLocalStorage();
+            if (baseCurrencySelect.value === code) {
+                const fallback = userCurrencies.includes('RUB') ? 'RUB' : userCurrencies[0];
+                previousBaseCurrency = fallback;
+                localStorage.setItem('user_base_currency', fallback);
+                updateBaseSelectOptions(fallback);
+                fetchExchangeRates();
+            } else { updateBaseSelectOptions(); updateDashboard(); }
+        }
+
+        function saveToLocalStorage() { localStorage.setItem('user_monitored_currencies', JSON.stringify(userCurrencies)); }
+
+        function showLoading(isLoading) {
+            if (isLoading) {
+                loadingEl.classList.remove('hidden'); dashboardEl.classList.add('hidden');
+                refreshIcon.classList.add('animate-spin'); refreshBtn.disabled = true;
+            } else {
+                loadingEl.classList.add('hidden'); dashboardEl.classList.remove('hidden');
+                refreshIcon.classList.remove('animate-spin'); refreshBtn.disabled = false;
+            }
+        }
+
+        const errorElObj = document.getElementById('error');
+        function showError(message) { errorElObj.classList.remove('hidden'); document.getElementById('errorText').textContent = message; dashboardEl.classList.add('hidden'); }
+        function hideError() { errorElObj.classList.add('hidden'); }
+
+        function updateTimestamp() {
+            if (!lastServerTime) return;
+            const dateString = lastServerTime.toLocaleDateString(currentLang, { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+            const timeString = lastServerTime.toLocaleTimeString(currentLang, { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'UTC' });
+            lastUpdatedEl.textContent = `${i18n[currentLang].timeUpdated} ${dateString} ${i18n[currentLang].timeIn} ${timeString} UTC`;
+        }
+
+        function changeLanguage(lang) {
+            if (currentLang === lang) return;
+            currentLang = lang; localStorage.setItem('user_lang', lang);
+            applyLocalization(); updateCurrentTime(); updateTimestamp(); updateBaseSelectOptions(); updateDashboard();
+        }
+
+        baseCurrencySelect.addEventListener('change', handleBaseCurrencyChange);
+        
+        refreshBtn.addEventListener('click', fetchExchangeRates);
+        amountInput.addEventListener('input', updateDashboard);
+        langRuBtn.addEventListener('click', () => changeLanguage('ru'));
+        langEnBtn.addEventListener('click', () => changeLanguage('en'));
+        resetBtn.addEventListener('click', () => {
+            if (confirm(i18n[currentLang].resetConfirm)) {
+                userCurrencies = [...DEFAULT_CURRENCIES]; 
+                previousBaseCurrency = 'RUB';
+                localStorage.setItem('user_base_currency', 'RUB');
+                saveToLocalStorage(); 
+                updateBaseSelectOptions('RUB'); 
+                fetchExchangeRates();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => { 
+            applyLocalization(); 
+            updateBaseSelectOptions(previousBaseCurrency);
+            lucide.createIcons(); 
+            updateCurrentTime(); 
+            setInterval(updateCurrentTime, 1000); 
+            fetchExchangeRates(); 
+            initAutoScroll(); // Инициализация автоскролла
+        });
